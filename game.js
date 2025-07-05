@@ -37,7 +37,11 @@ let powerLevel = 0;
 let isCharging = false;
 let startMousePos = { x: 0, y: 0 };
 let currentMousePos = { x: 0, y: 0 };
-let dragPath = []; // Track the drag path for curve detection
+let aimingCircle; // Circle that shows where you're aiming
+let curveBall; // Small ball inside the circle for curve control
+let isAiming = false; // Track if we're in aiming mode
+let targetAimPos = { x: 0, y: 0 }; // Where user wants to aim
+let curveAmount = { x: 0, y: 0 }; // How much curve based on curve ball position
 let aimingLine;
 let ballTrail = [];
 let particles = [];
@@ -129,6 +133,18 @@ function createScene() {
     // Create aiming line
     aimingLine = new PIXI.Graphics();
     app.stage.addChild(aimingLine);
+    
+    // Create aiming circle for curve control
+    aimingCircle = new PIXI.Graphics();
+    app.stage.addChild(aimingCircle);
+    
+    // Create curve ball (small ball inside aiming circle)
+    curveBall = new PIXI.Graphics();
+    curveBall.beginFill(0xffff00);
+    curveBall.drawCircle(0, 0, 6);
+    curveBall.endFill();
+    curveBall.visible = false;
+    app.stage.addChild(curveBall);
     
     // Add futuristic effects
     addFuturisticEffects();
@@ -259,7 +275,8 @@ function resetBallPosition() {
     ball.vx = 0;
     ball.vy = 0;
     ball.gravity = 0;
-    ball.curve = 0;
+    ball.curveX = 0;
+    ball.curveY = 0;
     ballTrail = [];
 }
 
@@ -281,13 +298,19 @@ function onMouseDown(event) {
     currentMousePos.x = startMousePos.x;
     currentMousePos.y = startMousePos.y;
     
-    // Initialize drag path tracking
-    dragPath = [{ x: startMousePos.x, y: startMousePos.y, time: Date.now() }];
+    // Set initial target position
+    targetAimPos.x = startMousePos.x;
+    targetAimPos.y = startMousePos.y;
     
     isCharging = true;
+    isAiming = false;
     gameState = 'charging';
     powerLevel = 0;
     powerMeter.classList.remove('hidden');
+    
+    // Reset curve
+    curveAmount.x = 0;
+    curveAmount.y = 0;
 }
 
 function onMouseMove(event) {
@@ -297,12 +320,42 @@ function onMouseMove(event) {
     currentMousePos.x = event.clientX - rect.left;
     currentMousePos.y = event.clientY - rect.top;
     
-    // Track drag path for curve detection
-    dragPath.push({ x: currentMousePos.x, y: currentMousePos.y, time: Date.now() });
+    const distanceFromStart = Math.sqrt(
+        Math.pow(currentMousePos.x - startMousePos.x, 2) + 
+        Math.pow(currentMousePos.y - startMousePos.y, 2)
+    );
     
-    // Keep only recent path points (last 20 points)
-    if (dragPath.length > 20) {
-        dragPath.shift();
+    if (!isAiming && distanceFromStart > 50) {
+        // Switch to aiming mode - lock the target position
+        isAiming = true;
+        targetAimPos.x = startMousePos.x;
+        targetAimPos.y = startMousePos.y;
+        curveBall.visible = true;
+    }
+    
+    if (isAiming) {
+        // Move curve ball within the aiming circle
+        const maxRadius = 40; // Maximum distance from center
+        const dx = currentMousePos.x - targetAimPos.x;
+        const dy = currentMousePos.y - targetAimPos.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance <= maxRadius) {
+            curveAmount.x = dx / maxRadius;
+            curveAmount.y = dy / maxRadius;
+        } else {
+            // Constrain to circle boundary
+            curveAmount.x = (dx / distance) * (maxRadius / maxRadius);
+            curveAmount.y = (dy / distance) * (maxRadius / maxRadius);
+        }
+        
+        // Update curve ball position
+        curveBall.x = targetAimPos.x + curveAmount.x * maxRadius;
+        curveBall.y = targetAimPos.y + curveAmount.y * maxRadius;
+    } else {
+        // Update target position
+        targetAimPos.x = currentMousePos.x;
+        targetAimPos.y = currentMousePos.y;
     }
     
     drawAimingLine();
@@ -312,7 +365,13 @@ function onMouseUp(event) {
     if (!isCharging) return;
     
     isCharging = false;
+    isAiming = false;
     powerMeter.classList.add('hidden');
+    
+    // Hide aiming elements
+    curveBall.visible = false;
+    aimingCircle.clear();
+    aimingLine.clear();
     
     if (powerLevel > 10) {
         shootBall();
@@ -341,69 +400,35 @@ function onTouchEnd(event) {
     onMouseUp(event);
 }
 
-function detectCurvature() {
-    if (dragPath.length < 5) return 0;
-    
-    let totalCurvature = 0;
-    let validPoints = 0;
-    
-    // Calculate curvature by examining angle changes along the path
-    for (let i = 2; i < dragPath.length; i++) {
-        const p1 = dragPath[i - 2];
-        const p2 = dragPath[i - 1];
-        const p3 = dragPath[i];
-        
-        // Calculate vectors
-        const v1 = { x: p2.x - p1.x, y: p2.y - p1.y };
-        const v2 = { x: p3.x - p2.x, y: p3.y - p2.y };
-        
-        // Calculate angle change (cross product gives curvature direction)
-        const cross = v1.x * v2.y - v1.y * v2.x;
-        const dot = v1.x * v2.x + v1.y * v2.y;
-        
-        if (Math.abs(cross) > 0.1) { // Only count significant curves
-            totalCurvature += cross;
-            validPoints++;
-        }
-    }
-    
-    // Return normalized curvature (-1 to 1, where negative = left curve, positive = right curve)
-    return validPoints > 0 ? Math.max(-1, Math.min(1, totalCurvature / (validPoints * 100))) : 0;
-}
+
 
 function drawAimingLine() {
     aimingLine.clear();
+    aimingCircle.clear();
     
     if (!isCharging) return;
     
-    const dx = currentMousePos.x - startMousePos.x;
-    const dy = currentMousePos.y - startMousePos.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+    // Draw line from ball to target
+    aimingLine.lineStyle(3, 0x00ffff, 0.8);
+    aimingLine.moveTo(ball.x, ball.y);
+    aimingLine.lineTo(targetAimPos.x, targetAimPos.y);
     
-    if (distance > 10) {
-        aimingLine.lineStyle(3, 0x00ffff, 0.8);
-        aimingLine.moveTo(ball.x, ball.y);
-        
-        // Get curvature from drag pattern
-        const curvature = detectCurvature();
-        
-        // Calculate aim direction (from ball toward goal)
-        const aimX = ball.x + dx * 0.5;
-        const aimY = ball.y + dy * 0.5 - Math.abs(dy) * 0.3; // Curve upward
-        
-        // Draw trajectory line toward goal
-        aimingLine.quadraticCurveTo(aimX + curvature * 100, aimY, ball.x + dx, ball.y + dy);
-        
-        // Draw power indicator circle
-        const powerRadius = Math.min(distance * 0.3, 50);
-        aimingLine.lineStyle(2, 0xffff00, 0.6);
-        aimingLine.drawCircle(ball.x, ball.y, powerRadius);
+    // Draw power indicator circle around ball
+    const powerRadius = Math.min(powerLevel * 0.5, 50);
+    aimingLine.lineStyle(2, 0xffff00, 0.6);
+    aimingLine.drawCircle(ball.x, ball.y, powerRadius);
+    
+    // Draw aiming circle at target position if in aiming mode
+    if (isAiming) {
+        aimingCircle.lineStyle(3, 0xffffff, 0.8);
+        aimingCircle.drawCircle(targetAimPos.x, targetAimPos.y, 40);
         
         // Draw curve indicator
-        if (Math.abs(curvature) > 0.1) {
-            const curveColor = curvature > 0 ? 0xff4444 : 0x44ff44;
-            aimingLine.lineStyle(2, curveColor, 0.8);
-            aimingLine.drawCircle(ball.x, ball.y, powerRadius + 10);
+        if (Math.abs(curveAmount.x) > 0.1 || Math.abs(curveAmount.y) > 0.1) {
+            const curveStrength = Math.sqrt(curveAmount.x * curveAmount.x + curveAmount.y * curveAmount.y);
+            const curveColor = curveStrength > 0.5 ? 0xff4444 : 0x44ff44;
+            aimingCircle.lineStyle(2, curveColor, 0.8);
+            aimingCircle.drawCircle(targetAimPos.x, targetAimPos.y, 45);
         }
     }
 }
@@ -412,8 +437,9 @@ function shootBall() {
     gameState = 'shooting';
     aimingLine.clear();
     
-    const dx = currentMousePos.x - startMousePos.x;
-    const dy = currentMousePos.y - startMousePos.y;
+    // Calculate direction to target
+    const dx = targetAimPos.x - ball.x;
+    const dy = targetAimPos.y - ball.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
     // Calculate ball velocity based on power and direction
@@ -424,9 +450,9 @@ function shootBall() {
     ball.vx = (dx / distance) * baseSpeed * 0.5; // Horizontal component (left/right)
     ball.vy = -(baseSpeed + power * 8); // Vertical component (always upward)
     
-    // Apply curve based on detected drag pattern (Magnus effect)
-    const curvature = detectCurvature();
-    ball.curve = curvature * 0.3; // More realistic curve based on actual drag pattern
+    // Apply curve based on curve ball position (Magnus effect)
+    ball.curveX = curveAmount.x * 0.4; // Horizontal curve
+    ball.curveY = curveAmount.y * 0.2; // Vertical curve
     ball.gravity = 0.15;
     
     // Move goalkeeper
@@ -502,7 +528,8 @@ function updateBall() {
     ball.vy += ball.gravity;
     
     // Apply curve
-    ball.vx += ball.curve;
+    ball.vx += ball.curveX;
+    ball.vy += ball.curveY;
     
     // Air resistance
     ball.vx *= 0.99;
