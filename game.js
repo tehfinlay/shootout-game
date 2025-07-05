@@ -337,7 +337,13 @@ function createFirstPersonGoal() {
     clickArea.buttonMode = true;
     clickArea.on('pointerdown', onGoalClick);
     
+    // Debug: Add visible boundary for goal area (remove this later)
+    const debugBorder = new PIXI.Graphics();
+    debugBorder.lineStyle(2, 0xff00ff, 0.5); // Magenta border for debugging
+    debugBorder.drawRect(GOAL_AREA.left, GOAL_AREA.top, GOAL_WIDTH, GOAL_HEIGHT);
+    
     goal.addChild(clickArea);
+    goal.addChild(debugBorder);
     app.stage.addChild(goal);
 }
 
@@ -598,8 +604,13 @@ function onMouseDown(event) {
     if (gameState !== 'aiming') return;
     
     const rect = app.view.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
+    // Scale mouse coordinates to match canvas resolution
+    const scaleX = GAME_WIDTH / rect.width;
+    const scaleY = GAME_HEIGHT / rect.height;
+    const mouseX = (event.clientX - rect.left) * scaleX;
+    const mouseY = (event.clientY - rect.top) * scaleY;
+    
+    console.log('Mouse click at:', mouseX, mouseY, 'Goal area:', GOAL_AREA);
     
     // Check if click is in goal area
     if (mouseX >= GOAL_AREA.left && mouseX <= GOAL_AREA.right && 
@@ -655,6 +666,7 @@ function onMouseDown(event) {
         }
         
         console.log('Started aiming at goal position:', targetAimPos);
+        console.log('Click detected in goal area. Goal boundaries:', GOAL_AREA);
         drawAimingLine();
     }
 }
@@ -663,8 +675,11 @@ function onMouseMove(event) {
     if (!isAiming || gameState !== 'aiming') return;
     
     const rect = app.view.getBoundingClientRect();
-    currentMousePos.x = event.clientX - rect.left;
-    currentMousePos.y = event.clientY - rect.top;
+    // Scale mouse coordinates to match canvas resolution
+    const scaleX = GAME_WIDTH / rect.width;
+    const scaleY = GAME_HEIGHT / rect.height;
+    currentMousePos.x = (event.clientX - rect.left) * scaleX;
+    currentMousePos.y = (event.clientY - rect.top) * scaleY;
     
     // Calculate curve based on mouse position relative to initial click position
     const maxRadius = 50;
@@ -752,14 +767,22 @@ function onMouseUp(event) {
 function onTouchStart(event) {
     event.preventDefault();
     const touch = event.touches[0];
-    const mockEvent = { clientX: touch.clientX, clientY: touch.clientY };
+    const mockEvent = { 
+        clientX: touch.clientX, 
+        clientY: touch.clientY,
+        preventDefault: () => {}
+    };
     onMouseDown(mockEvent);
 }
 
 function onTouchMove(event) {
     event.preventDefault();
     const touch = event.touches[0];
-    const mockEvent = { clientX: touch.clientX, clientY: touch.clientY };
+    const mockEvent = { 
+        clientX: touch.clientX, 
+        clientY: touch.clientY,
+        preventDefault: () => {}
+    };
     onMouseMove(mockEvent);
 }
 
@@ -800,19 +823,26 @@ function shootBall() {
     
     // Calculate ball velocity based on power and direction
     const power = Math.min(powerLevel / MAX_POWER, 1);
-    const baseSpeed = 8 + power * 12; // Increased power impact
+    const baseSpeed = 15 + power * 15; // Increased speed significantly
     
     // Calculate trajectory - ensure ball goes toward target
     const normalizedDx = dx / distance;
     const normalizedDy = dy / distance;
     
-    ball.vx = normalizedDx * baseSpeed;
-    ball.vy = normalizedDy * baseSpeed;
+    // For upward shots, reduce gravity effect by increasing initial velocity
+    let speedMultiplier = 1;
+    if (targetAimPos.y < ball.y) { // Shooting upward
+        speedMultiplier = 1.5 + Math.abs(normalizedDy) * 0.8; // Extra boost for upward shots
+    }
+    
+    const finalSpeed = baseSpeed * speedMultiplier;
+    ball.vx = normalizedDx * finalSpeed;
+    ball.vy = normalizedDy * finalSpeed;
     
     // Apply curve based on curve control
-    ball.curveX = curveAmount.x * 0.2; // Horizontal curve
-    ball.curveY = curveAmount.y * 0.15; // Vertical curve
-    ball.gravity = 0.08; // Reduced gravity so ball travels further
+    ball.curveX = curveAmount.x * 0.15; // Horizontal curve
+    ball.curveY = curveAmount.y * 0.1; // Vertical curve
+    ball.gravity = 0.05; // Much reduced gravity for better trajectory
     
     // Move goalkeeper
     moveGoalkeeper();
@@ -821,6 +851,8 @@ function shootBall() {
     createShootEffect();
     
     console.log('Ball shot with velocity:', ball.vx, ball.vy, 'curve:', ball.curveX, ball.curveY);
+    console.log('Target position:', targetAimPos, 'Ball position:', ball.x, ball.y);
+    console.log('Direction vector:', normalizedDx, normalizedDy, 'Speed multiplier:', speedMultiplier);
     
     // Reset for next shot
     targetAimPos.x = 0;
@@ -994,7 +1026,7 @@ function checkCollisions() {
     }
     
     // Check if ball passes way behind the goal (missed) - more generous
-    if (ball.y < 50) {
+    if (ball.y < 30) {
         miss();
     }
 }
