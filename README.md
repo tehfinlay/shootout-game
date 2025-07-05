@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🚀 Futuristic Penalty Shootout Game
 
 A thrilling penalty shootout game built with [PixiJS](https://pixijs.com/) featuring a futuristic cyberpunk theme, advanced ball physics, and challenging robot goalkeeper AI.
@@ -119,3 +120,6 @@ Enjoy your futuristic penalty shootout experience! 🚀⚽
   console.log('PIXI global in HTML:', typeof PIXI);
 </script>
 <script src="game.js"></script> 
+=======
+ 
+>>>>>>> 6abc2af (Initial commit with workflow and all game files)
