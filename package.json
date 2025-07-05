@@ -1,0 +1,16 @@
+{
+  "name": "game",
+  "version": "1.0.0",
+  "description": "A thrilling penalty shootout game built with [PixiJS](https://pixijs.com/) featuring a futuristic cyberpunk theme, advanced ball physics, and challenging robot goalkeeper AI.",
+  "main": "game.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "pixi.js": "^7.2.4"
+  }
+}
