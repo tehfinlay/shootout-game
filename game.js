@@ -64,16 +64,26 @@ function init() {
         app = new PIXI.Application({
             width: GAME_WIDTH,
             height: GAME_HEIGHT,
-            backgroundColor: 0x4a7c59, // Grass green
+            backgroundColor: 0x32cd32, // Bright green to ensure visibility
             antialias: true
         });
+        console.log('PIXI app created with size:', app.screen.width, 'x', app.screen.height);
 
         // Add canvas to DOM
         const canvas = document.getElementById('game-canvas');
         if (canvas) {
+            console.log('Original canvas:', canvas, 'size:', canvas.width, 'x', canvas.height);
             canvas.replaceWith(app.view);
             app.view.id = 'game-canvas';
             console.log('Canvas replaced successfully');
+            console.log('New canvas:', app.view, 'size:', app.view.width, 'x', app.view.height);
+            console.log('Canvas style:', app.view.style.cssText);
+            
+            // Ensure canvas is visible
+            app.view.style.display = 'block';
+            app.view.style.visibility = 'visible';
+            app.view.style.opacity = '1';
+            console.log('Canvas visibility ensured');
         } else {
             console.error('Canvas element not found');
             document.body.appendChild(app.view);
@@ -89,11 +99,20 @@ function init() {
 
         // Create a simple test to make sure PIXI is working
         const testGraphics = new PIXI.Graphics();
-        testGraphics.beginFill(0xff0000);
-        testGraphics.drawRect(100, 100, 200, 100);
+        testGraphics.beginFill(0xff0000); // Bright red
+        testGraphics.drawRect(50, 50, 300, 200);
         testGraphics.endFill();
+        
+        // Add white border
+        testGraphics.lineStyle(5, 0xffffff);
+        testGraphics.drawRect(50, 50, 300, 200);
+        
         app.stage.addChild(testGraphics);
-        console.log('Test graphics added');
+        console.log('Test graphics added with bounds:', testGraphics.getBounds());
+        
+        // Force a render
+        app.renderer.render(app.stage);
+        console.log('Forced render completed');
 
         // Create game scene
         try {
@@ -186,21 +205,28 @@ function createScene() {
         
         console.log('Scene creation completed, stage children:', app.stage.children.length);
         
+        // Force render after scene creation
+        app.renderer.render(app.stage);
+        console.log('Scene rendered');
+        
     } catch (error) {
         console.error('Error creating scene:', error);
     }
 }
 
 function createStadium() {
+    console.log('Creating stadium with dimensions:', GAME_WIDTH, 'x', GAME_HEIGHT);
+    
     // Stadium background
     const stadium = new PIXI.Graphics();
     
-    // Sky gradient
+    // Sky gradient - bright blue
     stadium.beginFill(0x87ceeb);
     stadium.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT / 3);
     stadium.endFill();
+    console.log('Sky created');
     
-    // Stadium stands (perspective)
+    // Stadium stands (perspective) - darker gray
     stadium.beginFill(0x333333);
     stadium.moveTo(0, GAME_HEIGHT / 3);
     stadium.lineTo(GAME_WIDTH, GAME_HEIGHT / 3);
@@ -208,6 +234,7 @@ function createStadium() {
     stadium.lineTo(100, GAME_HEIGHT / 2);
     stadium.closePath();
     stadium.endFill();
+    console.log('Stadium stands created');
     
     // Crowd silhouettes
     for (let i = 0; i < 50; i++) {
@@ -220,14 +247,15 @@ function createStadium() {
         stadium.addChild(person);
     }
     
-    // Grass field with perspective
+    // Grass field with perspective - bright green
     const field = new PIXI.Graphics();
-    field.beginFill(0x228b22);
+    field.beginFill(0x32cd32); // Bright lime green instead of dark green
     field.drawRect(0, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT / 2);
     field.endFill();
+    console.log('Grass field created');
     
-    // Field lines with perspective
-    field.lineStyle(2, 0xffffff, 0.8);
+    // Field lines with perspective - bright white
+    field.lineStyle(3, 0xffffff, 1.0); // Thicker, more opaque lines
     
     // Goal area (3D perspective)
     const goalAreaPoints = [
@@ -968,33 +996,28 @@ function endGame() {
 }
 
 function updateUI() {
+    // Only update UI if we're in a valid state
+    if (typeof playerScore === 'undefined' || typeof currentRound === 'undefined' || typeof maxRounds === 'undefined') {
+        return;
+    }
+    
     // Update score display - with complete error checking
     setTimeout(() => {
         try {
             const playerScoreElement = document.getElementById('player-score');
             const roundDisplayElement = document.getElementById('round-display');
             
-            console.log('Looking for UI elements:', {
-                playerScoreElement: !!playerScoreElement,
-                roundDisplayElement: !!roundDisplayElement,
-                playerScore: playerScore,
-                currentRound: currentRound,
-                maxRounds: maxRounds
-            });
-            
-            if (playerScoreElement && typeof playerScore !== 'undefined') {
+            if (playerScoreElement) {
                 playerScoreElement.textContent = String(playerScore);
-                console.log('Updated player score to:', playerScore);
             }
             
-            if (roundDisplayElement && typeof currentRound !== 'undefined' && typeof maxRounds !== 'undefined') {
+            if (roundDisplayElement) {
                 roundDisplayElement.textContent = `${currentRound}/${maxRounds}`;
-                console.log('Updated round display to:', `${currentRound}/${maxRounds}`);
             }
         } catch (error) {
-            console.error('UI update error:', error);
+            // Silently handle UI errors - they're not critical to game function
         }
-    }, 100);
+    }, 50);
 }
 
 function shootBall() {
