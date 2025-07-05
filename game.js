@@ -87,19 +87,54 @@ function init() {
             console.log('Warning: UI elements not found');
         }
 
+        // Create a simple test to make sure PIXI is working
+        const testGraphics = new PIXI.Graphics();
+        testGraphics.beginFill(0xff0000);
+        testGraphics.drawRect(100, 100, 200, 100);
+        testGraphics.endFill();
+        app.stage.addChild(testGraphics);
+        console.log('Test graphics added');
+
         // Create game scene
-        createScene();
+        try {
+            createScene();
+            console.log('Scene created');
+        } catch (sceneError) {
+            console.error('Scene creation failed:', sceneError);
+            // Create a simple fallback scene
+            const fallbackText = new PIXI.Text('Game Loading...', {
+                fontFamily: 'Arial',
+                fontSize: 36,
+                fill: 0xffffff
+            });
+            fallbackText.x = GAME_WIDTH / 2 - fallbackText.width / 2;
+            fallbackText.y = GAME_HEIGHT / 2 - fallbackText.height / 2;
+            app.stage.addChild(fallbackText);
+            console.log('Fallback scene created');
+        }
         
         // Setup event listeners
         setupEventListeners();
+        console.log('Event listeners setup');
         
         // Start game loop
         app.ticker.add(gameLoop);
+        console.log('Game loop started');
         
-        // Update initial UI
-        updateUI();
+        // Update initial UI after a delay to ensure DOM is ready
+        setTimeout(() => {
+            updateUI();
+        }, 500);
         
         console.log('Game initialized successfully');
+        
+        // Remove test graphics after 2 seconds
+        setTimeout(() => {
+            if (testGraphics.parent) {
+                app.stage.removeChild(testGraphics);
+                console.log('Test graphics removed');
+            }
+        }, 2000);
         
     } catch (error) {
         console.error('Error initializing game:', error);
@@ -107,37 +142,53 @@ function init() {
 }
 
 function createScene() {
-    // Create stadium background
-    createStadium();
-    
-    // Create 3D perspective goal
-    create3DGoal();
-    
-    // Create goal targets
-    createGoalTargets();
-    
-    // Create ball
-    createBall();
-    
-    // Create realistic goalkeeper
-    createRealisticGoalkeeper();
-    
-    // Create aiming elements
-    aimingLine = new PIXI.Graphics();
-    app.stage.addChild(aimingLine);
-    
-    aimingCircle = new PIXI.Graphics();
-    app.stage.addChild(aimingCircle);
-    
-    curveBall = new PIXI.Graphics();
-    curveBall.beginFill(0xffff00);
-    curveBall.drawCircle(0, 0, 6);
-    curveBall.endFill();
-    curveBall.visible = false;
-    app.stage.addChild(curveBall);
-    
-    // Add stadium atmosphere
-    addStadiumEffects();
+    try {
+        console.log('Creating scene...');
+        
+        // Create stadium background
+        createStadium();
+        console.log('Stadium created');
+        
+        // Create 3D perspective goal
+        create3DGoal();
+        console.log('Goal created');
+        
+        // Create goal targets
+        createGoalTargets();
+        console.log('Goal targets created');
+        
+        // Create ball
+        createBall();
+        console.log('Ball created');
+        
+        // Create realistic goalkeeper
+        createRealisticGoalkeeper();
+        console.log('Goalkeeper created');
+        
+        // Create aiming elements
+        aimingLine = new PIXI.Graphics();
+        app.stage.addChild(aimingLine);
+        
+        aimingCircle = new PIXI.Graphics();
+        app.stage.addChild(aimingCircle);
+        
+        curveBall = new PIXI.Graphics();
+        curveBall.beginFill(0xffff00);
+        curveBall.drawCircle(0, 0, 6);
+        curveBall.endFill();
+        curveBall.visible = false;
+        app.stage.addChild(curveBall);
+        console.log('Aiming elements created');
+        
+        // Add stadium atmosphere
+        addStadiumEffects();
+        console.log('Stadium effects added');
+        
+        console.log('Scene creation completed, stage children:', app.stage.children.length);
+        
+    } catch (error) {
+        console.error('Error creating scene:', error);
+    }
 }
 
 function createStadium() {
@@ -917,22 +968,33 @@ function endGame() {
 }
 
 function updateUI() {
-    // Update score display - with error checking
-    try {
-        const playerScoreElement = document.getElementById('player-score');
-        const roundDisplayElement = document.getElementById('round-display');
-        
-        if (playerScoreElement) {
-            playerScoreElement.textContent = playerScore;
+    // Update score display - with complete error checking
+    setTimeout(() => {
+        try {
+            const playerScoreElement = document.getElementById('player-score');
+            const roundDisplayElement = document.getElementById('round-display');
+            
+            console.log('Looking for UI elements:', {
+                playerScoreElement: !!playerScoreElement,
+                roundDisplayElement: !!roundDisplayElement,
+                playerScore: playerScore,
+                currentRound: currentRound,
+                maxRounds: maxRounds
+            });
+            
+            if (playerScoreElement && typeof playerScore !== 'undefined') {
+                playerScoreElement.textContent = String(playerScore);
+                console.log('Updated player score to:', playerScore);
+            }
+            
+            if (roundDisplayElement && typeof currentRound !== 'undefined' && typeof maxRounds !== 'undefined') {
+                roundDisplayElement.textContent = `${currentRound}/${maxRounds}`;
+                console.log('Updated round display to:', `${currentRound}/${maxRounds}`);
+            }
+        } catch (error) {
+            console.error('UI update error:', error);
         }
-        
-        if (roundDisplayElement) {
-            roundDisplayElement.textContent = `${currentRound}/${maxRounds}`;
-        }
-    } catch (error) {
-        console.log('UI update error:', error);
-        // Continue without UI updates if elements don't exist
-    }
+    }, 100);
 }
 
 function shootBall() {
