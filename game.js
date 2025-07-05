@@ -151,9 +151,6 @@ function createBall() {
     ball.drawCircle(0, 0, BALL_RADIUS);
     ball.endFill();
     
-    // Add futuristic glow effect
-    ball.filters = [new PIXI.filters.GlowFilter({ distance: 15, outerStrength: 2, innerStrength: 1, color: 0x00ffff, quality: 0.5 })];
-    
     resetBallPosition();
     app.stage.addChild(ball);
 }
@@ -187,9 +184,6 @@ function createGoalkeeper() {
     goalkeeper.addChild(body, head, leftEye, rightEye);
     goalkeeper.x = GAME_WIDTH - 60;
     goalkeeper.y = GAME_HEIGHT / 2;
-    
-    // Add glow effect
-    goalkeeper.filters = [new PIXI.filters.GlowFilter({ distance: 10, outerStrength: 2, innerStrength: 1, color: 0xff0000, quality: 0.3 })];
     
     app.stage.addChild(goalkeeper);
 }
