@@ -12,8 +12,8 @@ if (typeof PIXI !== "undefined") {
 // Game constants
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 700;
-const GOAL_WIDTH = 200;
-const GOAL_HEIGHT = 120;
+const GOAL_WIDTH = 300;
+const GOAL_HEIGHT = 100;
 const BALL_RADIUS = 12;
 const GOALKEEPER_WIDTH = 40;
 const GOALKEEPER_HEIGHT = 60;
@@ -76,25 +76,44 @@ function init() {
 }
 
 function createScene() {
-    // Create field background
+    // Create field background with perspective
     const field = new PIXI.Graphics();
     field.beginFill(0x0a4a0a);
     field.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     field.endFill();
     
-    // Add field lines
+    // Add field lines with perspective
     field.lineStyle(3, 0x00ffff, 0.8);
-    field.moveTo(0, GAME_HEIGHT / 2);
-    field.lineTo(GAME_WIDTH, GAME_HEIGHT / 2);
     
-    // Penalty area
-    field.drawRect(GAME_WIDTH - 250, GAME_HEIGHT / 2 - 100, 200, 200);
+    // Penalty area (trapezoid shape for perspective)
+    field.beginFill(0x0a4a0a, 0);
+    field.lineStyle(2, 0x00ffff, 0.6);
+    field.moveTo(GAME_WIDTH / 2 - 150, GAME_HEIGHT - 50);
+    field.lineTo(GAME_WIDTH / 2 + 150, GAME_HEIGHT - 50);
+    field.lineTo(GAME_WIDTH / 2 + 100, 200);
+    field.lineTo(GAME_WIDTH / 2 - 100, 200);
+    field.closePath();
+    field.endFill();
     
-    // Center circle
-    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 80);
+    // Goal area (smaller trapezoid)
+    field.beginFill(0x0a4a0a, 0);
+    field.lineStyle(2, 0x00ffff, 0.6);
+    field.moveTo(GAME_WIDTH / 2 - 100, 200);
+    field.lineTo(GAME_WIDTH / 2 + 100, 200);
+    field.lineTo(GAME_WIDTH / 2 + 60, 120);
+    field.lineTo(GAME_WIDTH / 2 - 60, 120);
+    field.closePath();
+    field.endFill();
     
-    // Goal area
-    field.drawRect(GAME_WIDTH - 100, GAME_HEIGHT / 2 - 60, 80, 120);
+    // Center line
+    field.lineStyle(3, 0x00ffff, 0.8);
+    field.moveTo(GAME_WIDTH / 2, GAME_HEIGHT - 50);
+    field.lineTo(GAME_WIDTH / 2, 50);
+    
+    // Penalty spot
+    field.beginFill(0x00ffff);
+    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT - 120, 4);
+    field.endFill();
     
     app.stage.addChild(field);
 
@@ -118,31 +137,46 @@ function createScene() {
 function createGoalPosts() {
     const goalContainer = new PIXI.Container();
     
-    // Goal posts
+    // Left goal post
     const leftPost = new PIXI.Graphics();
     leftPost.beginFill(0xffffff);
-    leftPost.drawRect(GAME_WIDTH - 20, GAME_HEIGHT / 2 - GOAL_HEIGHT / 2, 8, GOAL_HEIGHT);
+    leftPost.drawRect(GAME_WIDTH / 2 - GOAL_WIDTH / 2, 50, 8, GOAL_HEIGHT);
     leftPost.endFill();
     
+    // Right goal post
     const rightPost = new PIXI.Graphics();
     rightPost.beginFill(0xffffff);
-    rightPost.drawRect(GAME_WIDTH - 20, GAME_HEIGHT / 2 + GOAL_HEIGHT / 2 - 8, 8, 8);
+    rightPost.drawRect(GAME_WIDTH / 2 + GOAL_WIDTH / 2 - 8, 50, 8, GOAL_HEIGHT);
     rightPost.endFill();
     
     // Crossbar
     const crossbar = new PIXI.Graphics();
     crossbar.beginFill(0xffffff);
-    crossbar.drawRect(GAME_WIDTH - 20, GAME_HEIGHT / 2 - GOAL_HEIGHT / 2, 8, 8);
+    crossbar.drawRect(GAME_WIDTH / 2 - GOAL_WIDTH / 2, 50, GOAL_WIDTH, 8);
     crossbar.endFill();
     
-    goalContainer.addChild(leftPost, rightPost, crossbar);
+    // Goal net pattern
+    const net = new PIXI.Graphics();
+    net.lineStyle(1, 0xffffff, 0.3);
+    for (let i = 0; i < 10; i++) {
+        const x = GAME_WIDTH / 2 - GOAL_WIDTH / 2 + (i * GOAL_WIDTH / 10);
+        net.moveTo(x, 58);
+        net.lineTo(x, 50 + GOAL_HEIGHT);
+    }
+    for (let i = 0; i < 5; i++) {
+        const y = 58 + (i * GOAL_HEIGHT / 5);
+        net.moveTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2, y);
+        net.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2, y);
+    }
+    
+    goalContainer.addChild(leftPost, rightPost, crossbar, net);
     app.stage.addChild(goalContainer);
     
     // Goal boundaries for collision detection
-    goalLeft = GAME_WIDTH - 20;
-    goalRight = GAME_WIDTH;
-    goalTop = GAME_HEIGHT / 2 - GOAL_HEIGHT / 2;
-    goalBottom = GAME_HEIGHT / 2 + GOAL_HEIGHT / 2;
+    goalLeft = GAME_WIDTH / 2 - GOAL_WIDTH / 2;
+    goalRight = GAME_WIDTH / 2 + GOAL_WIDTH / 2;
+    goalTop = 50;
+    goalBottom = 50 + GOAL_HEIGHT;
 }
 
 function createBall() {
@@ -150,6 +184,14 @@ function createBall() {
     ball.beginFill(0xffffff);
     ball.drawCircle(0, 0, BALL_RADIUS);
     ball.endFill();
+    
+    // Add soccer ball pattern
+    ball.lineStyle(2, 0x000000, 1);
+    ball.drawCircle(0, 0, BALL_RADIUS);
+    ball.moveTo(-BALL_RADIUS * 0.7, 0);
+    ball.lineTo(BALL_RADIUS * 0.7, 0);
+    ball.moveTo(0, -BALL_RADIUS * 0.7);
+    ball.lineTo(0, BALL_RADIUS * 0.7);
     
     resetBallPosition();
     app.stage.addChild(ball);
@@ -182,8 +224,8 @@ function createGoalkeeper() {
     rightEye.endFill();
     
     goalkeeper.addChild(body, head, leftEye, rightEye);
-    goalkeeper.x = GAME_WIDTH - 60;
-    goalkeeper.y = GAME_HEIGHT / 2;
+    goalkeeper.x = GAME_WIDTH / 2;
+    goalkeeper.y = 100;
     
     app.stage.addChild(goalkeeper);
 }
@@ -212,8 +254,8 @@ function createBackgroundParticle() {
 }
 
 function resetBallPosition() {
-    ball.x = GAME_WIDTH / 2 - 200;
-    ball.y = GAME_HEIGHT / 2;
+    ball.x = GAME_WIDTH / 2;
+    ball.y = GAME_HEIGHT - 120;
     ball.vx = 0;
     ball.vy = 0;
     ball.gravity = 0;
@@ -345,13 +387,12 @@ function drawAimingLine() {
         // Get curvature from drag pattern
         const curvature = detectCurvature();
         
-        // Draw curved line to show trajectory
-        const curveAmount = distance * CURVE_SENSITIVITY + curvature * 100;
-        const midX = ball.x + dx * 0.5;
-        const midY = ball.y + dy * 0.5 - curveAmount;
+        // Calculate aim direction (from ball toward goal)
+        const aimX = ball.x + dx * 0.5;
+        const aimY = ball.y + dy * 0.5 - Math.abs(dy) * 0.3; // Curve upward
         
-        // Draw quadratic curve
-        aimingLine.quadraticCurveTo(midX, midY, ball.x + dx, ball.y + dy);
+        // Draw trajectory line toward goal
+        aimingLine.quadraticCurveTo(aimX + curvature * 100, aimY, ball.x + dx, ball.y + dy);
         
         // Draw power indicator circle
         const powerRadius = Math.min(distance * 0.3, 50);
@@ -379,8 +420,9 @@ function shootBall() {
     const power = Math.min(powerLevel / MAX_POWER, 1);
     const baseSpeed = 8 + power * 12;
     
-    ball.vx = (dx / distance) * baseSpeed;
-    ball.vy = (dy / distance) * baseSpeed;
+    // For new perspective: shoot upward toward goal
+    ball.vx = (dx / distance) * baseSpeed * 0.5; // Horizontal component (left/right)
+    ball.vy = -(baseSpeed + power * 8); // Vertical component (always upward)
     
     // Apply curve based on detected drag pattern (Magnus effect)
     const curvature = detectCurvature();
@@ -396,12 +438,12 @@ function shootBall() {
 
 function moveGoalkeeper() {
     // Simple AI: goalkeeper moves towards predicted ball position
-    const predictedY = ball.y + ball.vy * 20;
-    const targetY = Math.max(goalTop + 30, Math.min(goalBottom - 30, predictedY));
+    const predictedX = ball.x + ball.vx * 20;
+    const targetX = Math.max(goalLeft + 30, Math.min(goalRight - 30, predictedX));
     
     // Random factor to make it not perfect
     const randomOffset = (Math.random() - 0.5) * 60;
-    goalkeeper.targetY = targetY + randomOffset;
+    goalkeeper.targetX = targetX + randomOffset;
     
     // Animate goalkeeper movement
     const moveSpeed = 3 + Math.random() * 2;
@@ -489,10 +531,10 @@ function updateBall() {
 }
 
 function updateGoalkeeper() {
-    if (goalkeeper.targetY !== undefined) {
-        const dy = goalkeeper.targetY - goalkeeper.y;
-        if (Math.abs(dy) > 2) {
-            goalkeeper.y += Math.sign(dy) * goalkeeper.moveSpeed;
+    if (goalkeeper.targetX !== undefined) {
+        const dx = goalkeeper.targetX - goalkeeper.x;
+        if (Math.abs(dx) > 2) {
+            goalkeeper.x += Math.sign(dx) * goalkeeper.moveSpeed;
         }
     }
 }
@@ -522,7 +564,7 @@ function checkCollisions() {
     if (gameState !== 'shooting') return;
     
     // Check if ball goes out of bounds
-    if (ball.x < 0 || ball.x > GAME_WIDTH || ball.y < 0 || ball.y > GAME_HEIGHT) {
+    if (ball.x < -50 || ball.x > GAME_WIDTH + 50 || ball.y > GAME_HEIGHT + 50) {
         miss();
         return;
     }
@@ -534,11 +576,16 @@ function checkCollisions() {
             Math.pow(ball.x - goalkeeper.x, 2) + Math.pow(ball.y - goalkeeper.y, 2)
         );
         
-        if (distanceToGoalkeeper < 30) {
+        if (distanceToGoalkeeper < 40) {
             save();
         } else {
             score();
         }
+    }
+    
+    // Check if ball passes the goal line (missed)
+    if (ball.y < 0) {
+        miss();
     }
 }
 
