@@ -9,20 +9,20 @@ if (document.readyState === 'complete') {
 // Game constants
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 700;
-const GOAL_WIDTH = 600;
-const GOAL_HEIGHT = 250;
+const GOAL_WIDTH = 500;
+const GOAL_HEIGHT = 200;
 const BALL_RADIUS = 15;
 const GOALKEEPER_WIDTH = 60;
 const GOALKEEPER_HEIGHT = 100;
-const POWER_CHARGE_SPEED = 3;
+const POWER_CHARGE_SPEED = 2;
 const MAX_POWER = 100;
 
-// Goal area boundaries for clicking anywhere
+// Goal area boundaries for clicking anywhere - positioned higher for first-person view
 const GOAL_AREA = {
     left: GAME_WIDTH / 2 - GOAL_WIDTH / 2,
     right: GAME_WIDTH / 2 + GOAL_WIDTH / 2,
-    top: 80,
-    bottom: 80 + GOAL_HEIGHT
+    top: 150,
+    bottom: 150 + GOAL_HEIGHT
 };
 
 
@@ -267,14 +267,14 @@ function createFirstPersonStadium() {
     // Field markings
     field.lineStyle(4, 0xffffff, 0.9);
     
-    // Goal area box
-    const boxWidth = 400;
-    const boxHeight = 150;
-    field.drawRect(GAME_WIDTH / 2 - boxWidth / 2, GOAL_AREA.top + GOAL_HEIGHT - 20, boxWidth, boxHeight);
+    // Goal area box (18-yard box)
+    const boxWidth = 350;
+    const boxHeight = 120;
+    field.drawRect(GAME_WIDTH / 2 - boxWidth / 2, GOAL_AREA.top + GOAL_HEIGHT - 10, boxWidth, boxHeight);
     
     // Penalty spot
     field.beginFill(0xffffff);
-    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT - 120, 4);
+    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT - 70, 4);
     field.endFill();
     
     app.stage.addChild(field);
@@ -576,7 +576,7 @@ function createAtmosphereParticle() {
 
 function resetBallPosition() {
     ball.x = GAME_WIDTH / 2;
-    ball.y = GAME_HEIGHT - 120; // Position for first-person view
+    ball.y = GAME_HEIGHT - 60; // Closer to bottom for first-person view
     ball.vx = 0;
     ball.vy = 0;
     ball.gravity = 0;
@@ -605,25 +605,45 @@ function onMouseDown(event) {
     if (mouseX >= GOAL_AREA.left && mouseX <= GOAL_AREA.right && 
         mouseY >= GOAL_AREA.top && mouseY <= GOAL_AREA.bottom) {
         
-        // Set target position
+        // Set target position where user clicked
         targetAimPos.x = mouseX;
         targetAimPos.y = mouseY;
         
-        // Start aiming mode
+        // Start aiming and charging
         isAiming = true;
         isCharging = true;
         powerLevel = 0;
+        
+        // Store initial click position for curve control circle center
         startMousePos.x = mouseX;
         startMousePos.y = mouseY;
-        currentMousePos.x = startMousePos.x;
-        currentMousePos.y = startMousePos.y;
+        currentMousePos.x = mouseX;
+        currentMousePos.y = mouseY;
         
-        // Create/show curve ball
-        if (curveBall) {
-            curveBall.visible = true;
-            curveBall.x = ball.x;
-            curveBall.y = ball.y;
+        // Create aiming circle at click position (not ball position)
+        if (aimingCircle) {
+            app.stage.removeChild(aimingCircle);
         }
+        
+        aimingCircle = new PIXI.Graphics();
+        aimingCircle.lineStyle(3, 0x00ff00, 0.8);
+        aimingCircle.drawCircle(0, 0, 50); // Curve control circle
+        aimingCircle.x = mouseX;
+        aimingCircle.y = mouseY;
+        app.stage.addChild(aimingCircle);
+        
+        // Create curve control ball
+        if (curveBall) {
+            app.stage.removeChild(curveBall);
+        }
+        
+        curveBall = new PIXI.Graphics();
+        curveBall.beginFill(0xffff00);
+        curveBall.drawCircle(0, 0, 8);
+        curveBall.endFill();
+        curveBall.x = mouseX; // Start at click position
+        curveBall.y = mouseY;
+        app.stage.addChild(curveBall);
         
         curveAmount.x = 0;
         curveAmount.y = 0;
@@ -646,28 +666,44 @@ function onMouseMove(event) {
     currentMousePos.x = event.clientX - rect.left;
     currentMousePos.y = event.clientY - rect.top;
     
-    // Calculate curve based on mouse position relative to ball
+    // Calculate curve based on mouse position relative to initial click position
     const maxRadius = 50;
-    const dx = currentMousePos.x - ball.x;
-    const dy = currentMousePos.y - ball.y;
+    const dx = currentMousePos.x - startMousePos.x;
+    const dy = currentMousePos.y - startMousePos.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
+    // Constrain movement to within the circle
     if (distance <= maxRadius) {
         curveAmount.x = dx / maxRadius;
         curveAmount.y = dy / maxRadius;
+        
+        // Update curve ball position
+        if (curveBall) {
+            curveBall.x = startMousePos.x + dx;
+            curveBall.y = startMousePos.y + dy;
+        }
     } else {
-        curveAmount.x = (dx / distance);
-        curveAmount.y = (dy / distance);
+        // Constrain to circle edge
+        const constrainedX = (dx / distance) * maxRadius;
+        const constrainedY = (dy / distance) * maxRadius;
+        
+        curveAmount.x = constrainedX / maxRadius;
+        curveAmount.y = constrainedY / maxRadius;
+        
+        if (curveBall) {
+            curveBall.x = startMousePos.x + constrainedX;
+            curveBall.y = startMousePos.y + constrainedY;
+        }
     }
     
-    // Update curve ball position - constrain to circle
-    const constrainedDistance = Math.min(distance, maxRadius);
-    const constrainedX = (dx / distance) * constrainedDistance;
-    const constrainedY = (dy / distance) * constrainedDistance;
+    // Update circle color based on curve strength
+    const curveStrength = Math.sqrt(curveAmount.x * curveAmount.x + curveAmount.y * curveAmount.y);
+    const circleColor = curveStrength > 0.5 ? 0xff4444 : 0x44ff44;
     
-    if (curveBall) {
-        curveBall.x = ball.x + constrainedX;
-        curveBall.y = ball.y + constrainedY;
+    if (aimingCircle) {
+        aimingCircle.clear();
+        aimingCircle.lineStyle(3, circleColor, 0.8);
+        aimingCircle.drawCircle(0, 0, 50);
     }
     
     drawAimingLine();
@@ -685,20 +721,22 @@ function onMouseUp(event) {
         powerMeterContainer.classList.add('hidden');
     }
     
-    // Hide aiming elements
+    // Clean up aiming elements
     if (curveBall) {
-        curveBall.visible = false;
+        app.stage.removeChild(curveBall);
+        curveBall = null;
     }
     if (aimingCircle) {
-        aimingCircle.clear();
+        app.stage.removeChild(aimingCircle);
+        aimingCircle = null;
     }
     if (aimingLine) {
         aimingLine.clear();
     }
     
     // Shoot if power is sufficient
-    if (powerLevel > 10) {
-        console.log('Shooting with power:', powerLevel);
+    if (powerLevel > 15) {
+        console.log('Shooting with power:', powerLevel, 'toward:', targetAimPos);
         shootBall();
     } else {
         console.log('Not enough power to shoot');
@@ -706,6 +744,7 @@ function onMouseUp(event) {
         // Reset for next attempt
         targetAimPos.x = 0;
         targetAimPos.y = 0;
+        powerLevel = 0;
     }
 }
 
@@ -730,40 +769,29 @@ function onTouchEnd(event) {
 }
 
 function drawAimingLine() {
-    aimingLine.clear();
-    aimingCircle.clear();
+    if (aimingLine) aimingLine.clear();
     
-    if (gameState !== 'aiming') return;
+    if (gameState !== 'aiming' || !isAiming) return;
     
     // Draw line from ball to target
     aimingLine.lineStyle(3, 0x00ffff, 0.8);
     aimingLine.moveTo(ball.x, ball.y);
     aimingLine.lineTo(targetAimPos.x, targetAimPos.y);
     
-    // Draw power indicator circle around ball
-    const powerRadius = Math.min(powerLevel * 0.5, 50);
-    aimingLine.lineStyle(2, 0xffff00, 0.6);
-    aimingLine.drawCircle(ball.x, ball.y, powerRadius);
+    // Draw power indicator as a growing line thickness
+    const powerThickness = 2 + (powerLevel / MAX_POWER) * 8;
+    aimingLine.lineStyle(powerThickness, 0xffff00, 0.6);
+    aimingLine.moveTo(ball.x, ball.y);
+    aimingLine.lineTo(targetAimPos.x, targetAimPos.y);
     
-    // Draw aiming circle at ball position if in aiming mode
-    if (isAiming) {
-        aimingCircle.lineStyle(3, 0xffffff, 0.8);
-        aimingCircle.drawCircle(ball.x, ball.y, 40);
-        
-        // Draw curve indicator
-        if (Math.abs(curveAmount.x) > 0.1 || Math.abs(curveAmount.y) > 0.1) {
-            const curveStrength = Math.sqrt(curveAmount.x * curveAmount.x + curveAmount.y * curveAmount.y);
-            const curveColor = curveStrength > 0.5 ? 0xff4444 : 0x44ff44;
-            aimingCircle.lineStyle(2, curveColor, 0.8);
-            aimingCircle.drawCircle(ball.x, ball.y, 45);
-        }
-    }
+    // Draw target indicator at click position
+    aimingLine.lineStyle(2, 0xff0000, 0.8);
+    aimingLine.drawCircle(targetAimPos.x, targetAimPos.y, 10);
 }
 
 function shootBall() {
     gameState = 'shooting';
-    aimingLine.clear();
-    aimingCircle.clear();
+    if (aimingLine) aimingLine.clear();
     
     // Calculate direction to target
     const dx = targetAimPos.x - ball.x;
@@ -772,16 +800,19 @@ function shootBall() {
     
     // Calculate ball velocity based on power and direction
     const power = Math.min(powerLevel / MAX_POWER, 1);
-    const baseSpeed = 12 + power * 8;
+    const baseSpeed = 8 + power * 12; // Increased power impact
     
-    // Calculate trajectory to target
-    ball.vx = (dx / distance) * baseSpeed;
-    ball.vy = (dy / distance) * baseSpeed;
+    // Calculate trajectory - ensure ball goes toward target
+    const normalizedDx = dx / distance;
+    const normalizedDy = dy / distance;
     
-    // Apply curve based on curve ball position
-    ball.curveX = curveAmount.x * 0.3;
-    ball.curveY = curveAmount.y * 0.2;
-    ball.gravity = 0.1;
+    ball.vx = normalizedDx * baseSpeed;
+    ball.vy = normalizedDy * baseSpeed;
+    
+    // Apply curve based on curve control
+    ball.curveX = curveAmount.x * 0.2; // Horizontal curve
+    ball.curveY = curveAmount.y * 0.15; // Vertical curve
+    ball.gravity = 0.08; // Reduced gravity so ball travels further
     
     // Move goalkeeper
     moveGoalkeeper();
@@ -789,10 +820,14 @@ function shootBall() {
     // Add shooting effects
     createShootEffect();
     
+    console.log('Ball shot with velocity:', ball.vx, ball.vy, 'curve:', ball.curveX, ball.curveY);
+    
     // Reset for next shot
     targetAimPos.x = 0;
     targetAimPos.y = 0;
     powerLevel = 0;
+    curveAmount.x = 0;
+    curveAmount.y = 0;
 }
 
 function moveGoalkeeper() {
@@ -936,8 +971,8 @@ function updateParticles() {
 function checkCollisions() {
     if (gameState !== 'shooting') return;
     
-    // Check if ball goes out of bounds
-    if (ball.x < -50 || ball.x > GAME_WIDTH + 50 || ball.y > GAME_HEIGHT + 50) {
+    // Check if ball goes out of bounds (more generous bounds)
+    if (ball.x < -100 || ball.x > GAME_WIDTH + 100 || ball.y > GAME_HEIGHT + 100) {
         miss();
         return;
     }
@@ -950,7 +985,7 @@ function checkCollisions() {
             Math.pow(ball.x - goalkeeper.x, 2) + Math.pow(ball.y - goalkeeper.y, 2)
         );
         
-        if (distanceToGoalkeeper < 35) {
+        if (distanceToGoalkeeper < 40) {
             save();
         } else {
             score();
@@ -958,8 +993,8 @@ function checkCollisions() {
         return;
     }
     
-    // Check if ball passes behind the goal (missed)
-    if (ball.y < GAME_HEIGHT / 2 + 20) {
+    // Check if ball passes way behind the goal (missed) - more generous
+    if (ball.y < 50) {
         miss();
     }
 }
@@ -1015,14 +1050,39 @@ function nextRound() {
         return;
     }
     
+    // Clean up any remaining aiming elements
+    if (curveBall) {
+        app.stage.removeChild(curveBall);
+        curveBall = null;
+    }
+    if (aimingCircle) {
+        app.stage.removeChild(aimingCircle);
+        aimingCircle = null;
+    }
+    if (aimingLine) {
+        aimingLine.clear();
+    }
+    
     // Reset for next round
     gameState = 'aiming';
     resetBallPosition();
     powerLevel = 0;
+    isAiming = false;
+    isCharging = false;
+    curveAmount.x = 0;
+    curveAmount.y = 0;
+    targetAimPos.x = 0;
+    targetAimPos.y = 0;
     
     // Reset goalkeeper position
     goalkeeper.x = GAME_WIDTH / 2;
     goalkeeper.targetX = undefined;
+    
+    // Hide power meter
+    const powerMeterContainer = document.getElementById('power-meter-container');
+    if (powerMeterContainer) {
+        powerMeterContainer.classList.add('hidden');
+    }
     
     updateUI();
 }
