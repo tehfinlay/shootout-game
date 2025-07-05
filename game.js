@@ -9,19 +9,26 @@ if (document.readyState === 'complete') {
 // Game constants
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 700;
-const GOAL_WIDTH = 400;
-const GOAL_HEIGHT = 200;
-const GOAL_DEPTH = 100; // 3D depth
-const BALL_RADIUS = 12;
-const GOALKEEPER_WIDTH = 50;
-const GOALKEEPER_HEIGHT = 80;
-const POWER_CHARGE_SPEED = 2;
+const GOAL_WIDTH = 600;
+const GOAL_HEIGHT = 250;
+const BALL_RADIUS = 15;
+const GOALKEEPER_WIDTH = 60;
+const GOALKEEPER_HEIGHT = 100;
+const POWER_CHARGE_SPEED = 3;
 const MAX_POWER = 100;
-const CURVE_SENSITIVITY = 0.3;
+
+// Goal area boundaries for clicking anywhere
+const GOAL_AREA = {
+    left: GAME_WIDTH / 2 - GOAL_WIDTH / 2,
+    right: GAME_WIDTH / 2 + GOAL_WIDTH / 2,
+    top: 80,
+    bottom: 80 + GOAL_HEIGHT
+};
+
 
 // Game state
 let app;
-let gameState = 'ready'; // 'ready', 'aiming', 'shooting', 'scored', 'missed'
+let gameState = 'aiming'; // 'aiming', 'shooting', 'scored', 'missed'
 let playerScore = 0;
 let robotScore = 0;
 let currentRound = 1;
@@ -30,8 +37,8 @@ let maxRounds = 5;
 // Game objects
 let ball;
 let goalkeeper;
-let goalTargets = []; // Clickable target positions in goal
-let selectedTarget = null;
+let goalkeepersprite;
+let ballSprite;
 let powerLevel = 0;
 let isCharging = false;
 let startMousePos = { x: 0, y: 0 };
@@ -164,24 +171,20 @@ function createScene() {
     try {
         console.log('Creating scene...');
         
-        // Create stadium background
-        createStadium();
+        // Create stadium background with first-person perspective
+        createFirstPersonStadium();
         console.log('Stadium created');
         
-        // Create 3D perspective goal
-        create3DGoal();
+        // Create first-person goal
+        createFirstPersonGoal();
         console.log('Goal created');
         
-        // Create goal targets
-        createGoalTargets();
-        console.log('Goal targets created');
-        
-        // Create ball
-        createBall();
+        // Create realistic ball
+        createRealisticBall();
         console.log('Ball created');
         
-        // Create realistic goalkeeper
-        createRealisticGoalkeeper();
+        // Create realistic goalkeeper sprite
+        createGoalkeeperSprite();
         console.log('Goalkeeper created');
         
         // Create aiming elements
@@ -214,233 +217,323 @@ function createScene() {
     }
 }
 
-function createStadium() {
-    console.log('Creating stadium with dimensions:', GAME_WIDTH, 'x', GAME_HEIGHT);
+function createFirstPersonStadium() {
+    console.log('Creating first-person stadium with dimensions:', GAME_WIDTH, 'x', GAME_HEIGHT);
     
-    // Stadium background
-    const stadium = new PIXI.Graphics();
+    // Sky background
+    const sky = new PIXI.Graphics();
+    sky.beginFill(0x87ceeb);
+    sky.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT * 0.4);
+    sky.endFill();
+    app.stage.addChild(sky);
     
-    // Sky gradient - bright blue
-    stadium.beginFill(0x87ceeb);
-    stadium.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT / 3);
-    stadium.endFill();
-    console.log('Sky created');
+    // Stadium stands behind goal
+    const stands = new PIXI.Graphics();
+    stands.beginFill(0x444444);
+    stands.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT * 0.4);
+    stands.endFill();
     
-    // Stadium stands (perspective) - darker gray
-    stadium.beginFill(0x333333);
-    stadium.moveTo(0, GAME_HEIGHT / 3);
-    stadium.lineTo(GAME_WIDTH, GAME_HEIGHT / 3);
-    stadium.lineTo(GAME_WIDTH - 100, GAME_HEIGHT / 2);
-    stadium.lineTo(100, GAME_HEIGHT / 2);
-    stadium.closePath();
-    stadium.endFill();
-    console.log('Stadium stands created');
-    
-    // Crowd silhouettes
-    for (let i = 0; i < 50; i++) {
+    // Add crowd texture
+    for (let i = 0; i < 200; i++) {
         const person = new PIXI.Graphics();
-        person.beginFill(0x222222);
-        person.drawRect(0, 0, 3, 8);
+        const colors = [0x333333, 0x555555, 0x777777, 0x2c5530, 0x8b0000];
+        person.beginFill(colors[Math.floor(Math.random() * colors.length)]);
+        person.drawRect(0, 0, 2, 4);
         person.endFill();
-        person.x = 100 + (i * (GAME_WIDTH - 200) / 50);
-        person.y = GAME_HEIGHT / 3 + Math.random() * 20;
-        stadium.addChild(person);
+        person.x = Math.random() * GAME_WIDTH;
+        person.y = Math.random() * (GAME_HEIGHT * 0.4);
+        stands.addChild(person);
     }
+    app.stage.addChild(stands);
     
-    // Grass field with perspective - bright green
+    // Grass field - realistic green
     const field = new PIXI.Graphics();
-    field.beginFill(0x32cd32); // Bright lime green instead of dark green
-    field.drawRect(0, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT / 2);
+    field.beginFill(0x228b22);
+    field.drawRect(0, GAME_HEIGHT * 0.4, GAME_WIDTH, GAME_HEIGHT * 0.6);
     field.endFill();
-    console.log('Grass field created');
     
-    // Field lines with perspective - bright white
-    field.lineStyle(3, 0xffffff, 1.0); // Thicker, more opaque lines
-    
-    // Goal area (3D perspective)
-    const goalAreaPoints = [
-        { x: GAME_WIDTH / 2 - 120, y: GAME_HEIGHT / 2 + 80 },
-        { x: GAME_WIDTH / 2 + 120, y: GAME_HEIGHT / 2 + 80 },
-        { x: GAME_WIDTH / 2 + 80, y: GAME_HEIGHT / 2 + 20 },
-        { x: GAME_WIDTH / 2 - 80, y: GAME_HEIGHT / 2 + 20 }
-    ];
-    
-    field.moveTo(goalAreaPoints[0].x, goalAreaPoints[0].y);
-    for (let i = 1; i < goalAreaPoints.length; i++) {
-        field.lineTo(goalAreaPoints[i].x, goalAreaPoints[i].y);
+    // Add grass texture
+    for (let i = 0; i < 100; i++) {
+        const grass = new PIXI.Graphics();
+        grass.beginFill(0x32cd32, 0.3);
+        grass.drawRect(0, 0, Math.random() * 20 + 5, 2);
+        grass.endFill();
+        grass.x = Math.random() * GAME_WIDTH;
+        grass.y = GAME_HEIGHT * 0.4 + Math.random() * (GAME_HEIGHT * 0.6);
+        grass.rotation = Math.random() * Math.PI / 4;
+        field.addChild(grass);
     }
-    field.closePath();
+    
+    // Field markings
+    field.lineStyle(4, 0xffffff, 0.9);
+    
+    // Goal area box
+    const boxWidth = 400;
+    const boxHeight = 150;
+    field.drawRect(GAME_WIDTH / 2 - boxWidth / 2, GOAL_AREA.top + GOAL_HEIGHT - 20, boxWidth, boxHeight);
     
     // Penalty spot
     field.beginFill(0xffffff);
-    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT - 80, 3);
+    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT - 120, 4);
     field.endFill();
     
-    app.stage.addChild(stadium);
     app.stage.addChild(field);
 }
 
-function create3DGoal() {
+function createFirstPersonGoal() {
     const goal = new PIXI.Container();
     
-    // Goal frame with 3D perspective
+    // Goal posts - larger and more prominent
     const frame = new PIXI.Graphics();
     
-    // Left post
+    // Left post with depth
     frame.beginFill(0xffffff);
-    frame.moveTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-    frame.lineTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
-    frame.lineTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2 + 8, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
-    frame.lineTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2 + 8, GAME_HEIGHT / 2 + 20);
-    frame.closePath();
+    frame.drawRect(GOAL_AREA.left - 10, GOAL_AREA.top, 15, GOAL_HEIGHT);
     frame.endFill();
     
-    // Right post
+    // Right post with depth  
     frame.beginFill(0xffffff);
-    frame.moveTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20);
-    frame.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
-    frame.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2 - 8, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
-    frame.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2 - 8, GAME_HEIGHT / 2 + 20);
-    frame.closePath();
+    frame.drawRect(GOAL_AREA.right - 5, GOAL_AREA.top, 15, GOAL_HEIGHT);
     frame.endFill();
     
     // Crossbar
     frame.beginFill(0xffffff);
-    frame.drawRect(GAME_WIDTH / 2 - GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20, GOAL_WIDTH, 8);
+    frame.drawRect(GOAL_AREA.left - 10, GOAL_AREA.top - 5, GOAL_WIDTH + 25, 15);
     frame.endFill();
     
-    // Goal net with 3D perspective
+    // Goal net - more detailed
     const net = new PIXI.Graphics();
-    net.lineStyle(1, 0xffffff, 0.4);
+    net.lineStyle(2, 0xffffff, 0.6);
     
-    // Vertical net lines
-    for (let i = 0; i <= 20; i++) {
-        const x = GAME_WIDTH / 2 - GOAL_WIDTH / 2 + (i * GOAL_WIDTH / 20);
-        net.moveTo(x, GAME_HEIGHT / 2 + 28);
-        net.lineTo(x, GAME_HEIGHT / 2 + 28 + GOAL_HEIGHT - 8);
+    // Create realistic net pattern
+    const netSpacing = 25;
+    for (let x = GOAL_AREA.left; x <= GOAL_AREA.right; x += netSpacing) {
+        for (let y = GOAL_AREA.top; y <= GOAL_AREA.bottom; y += netSpacing) {
+            // Vertical lines
+            net.moveTo(x, GOAL_AREA.top);
+            net.lineTo(x, GOAL_AREA.bottom);
+            // Horizontal lines
+            net.moveTo(GOAL_AREA.left, y);
+            net.lineTo(GOAL_AREA.right, y);
+        }
     }
     
-    // Horizontal net lines
-    for (let i = 0; i <= 10; i++) {
-        const y = GAME_HEIGHT / 2 + 28 + (i * (GOAL_HEIGHT - 8) / 10);
-        net.moveTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2, y);
-        net.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2, y);
-    }
+    // Goal mouth shadow/depth
+    const shadow = new PIXI.Graphics();
+    shadow.beginFill(0x000000, 0.3);
+    shadow.drawRect(GOAL_AREA.left, GOAL_AREA.top, GOAL_WIDTH, GOAL_HEIGHT);
+    shadow.endFill();
     
-    goal.addChild(frame);
+    goal.addChild(shadow);
     goal.addChild(net);
+    goal.addChild(frame);
+    
+    // Make goal clickable for shooting anywhere
+    const clickArea = new PIXI.Graphics();
+    clickArea.beginFill(0x000000, 0); // Invisible but interactive
+    clickArea.drawRect(GOAL_AREA.left, GOAL_AREA.top, GOAL_WIDTH, GOAL_HEIGHT);
+    clickArea.endFill();
+    clickArea.interactive = true;
+    clickArea.buttonMode = true;
+    clickArea.on('pointerdown', onGoalClick);
+    
+    goal.addChild(clickArea);
     app.stage.addChild(goal);
 }
 
-function createGoalTargets() {
-    const targetPositions = [
-        // Top row
-        { x: GAME_WIDTH / 2 - GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 60, id: 'top-left' },
-        { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 + 60, id: 'top-center' },
-        { x: GAME_WIDTH / 2 + GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 60, id: 'top-right' },
-        
-        // Bottom row
-        { x: GAME_WIDTH / 2 - GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 160, id: 'bottom-left' },
-        { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 + 160, id: 'bottom-center' },
-        { x: GAME_WIDTH / 2 + GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 160, id: 'bottom-right' }
-    ];
+// Click handler for goal area - allows clicking anywhere in the goal
+function onGoalClick(event) {
+    if (gameState !== 'aiming') return;
     
-    targetPositions.forEach(pos => {
-        const target = new PIXI.Graphics();
-        target.beginFill(0xffff00, 0.3);
-        target.lineStyle(3, 0xffff00, 0.8);
-        target.drawCircle(0, 0, 25);
-        target.endFill();
-        
-        target.beginFill(0xff0000, 0.5);
-        target.drawCircle(0, 0, 8);
-        target.endFill();
-        
-        target.x = pos.x;
-        target.y = pos.y;
-        target.interactive = true;
-        target.buttonMode = true;
-        target.targetId = pos.id;
-        target.goalX = pos.x;
-        target.goalY = pos.y;
-        
-        target.on('pointerdown', onTargetClick);
-        target.on('pointerover', onTargetHover);
-        target.on('pointerout', onTargetOut);
-        
-        goalTargets.push(target);
-        app.stage.addChild(target);
-    });
+    const clickPos = event.data.getLocalPosition(app.stage);
+    console.log('Goal clicked at:', clickPos.x, clickPos.y);
+    
+    // Set target position based on where user clicked
+    targetAimPos.x = clickPos.x;
+    targetAimPos.y = clickPos.y;
+    
+    // Start aiming mode
+    isAiming = true;
+    startMousePos.x = clickPos.x;
+    startMousePos.y = clickPos.y;
+    
+    // Create aiming circle
+    if (aimingCircle) {
+        app.stage.removeChild(aimingCircle);
+    }
+    
+    aimingCircle = new PIXI.Graphics();
+    aimingCircle.lineStyle(3, 0x00ff00, 0.8);
+    aimingCircle.drawCircle(0, 0, 50);
+    aimingCircle.x = ball.x;
+    aimingCircle.y = ball.y;
+    app.stage.addChild(aimingCircle);
+    
+    // Create curve ball
+    if (curveBall) {
+        app.stage.removeChild(curveBall);
+    }
+    
+    curveBall = new PIXI.Graphics();
+    curveBall.beginFill(0xffff00);
+    curveBall.drawCircle(0, 0, 8);
+    curveBall.endFill();
+    curveBall.x = ball.x;
+    curveBall.y = ball.y;
+    app.stage.addChild(curveBall);
+    
+    // Start power charging
+    isCharging = true;
+    powerLevel = 0;
+    
+    console.log('Aiming mode started, target at:', targetAimPos);
 }
 
-function createBall() {
+function createRealisticBall() {
+    // Create a more detailed soccer ball
     ball = new PIXI.Graphics();
     
-    // Main ball
+    // Main white ball
     ball.beginFill(0xffffff);
     ball.drawCircle(0, 0, BALL_RADIUS);
     ball.endFill();
     
-    // Soccer ball pattern
+    // Black outer circle
     ball.lineStyle(2, 0x000000, 1);
     ball.drawCircle(0, 0, BALL_RADIUS);
     
-    // Pentagon pattern
+    // Traditional soccer ball pentagons and hexagons pattern
     ball.beginFill(0x000000);
+    
+    // Central pentagon
     for (let i = 0; i < 5; i++) {
-        const angle = (i * Math.PI * 2) / 5;
-        const x = Math.cos(angle) * 4;
-        const y = Math.sin(angle) * 4;
+        const angle = (i * Math.PI * 2) / 5 - Math.PI / 2;
+        const x = Math.cos(angle) * 5;
+        const y = Math.sin(angle) * 5;
         if (i === 0) ball.moveTo(x, y);
         else ball.lineTo(x, y);
     }
     ball.closePath();
     ball.endFill();
     
+    // Add curved lines for 3D effect
+    ball.lineStyle(1, 0x000000, 0.7);
+    for (let i = 0; i < 6; i++) {
+        const angle = (i * Math.PI * 2) / 6;
+        const startX = Math.cos(angle) * 8;
+        const startY = Math.sin(angle) * 8;
+        const endX = Math.cos(angle) * BALL_RADIUS;
+        const endY = Math.sin(angle) * BALL_RADIUS;
+        ball.moveTo(startX, startY);
+        ball.lineTo(endX, endY);
+    }
+    
+    // Add highlight for 3D effect
+    const highlight = new PIXI.Graphics();
+    highlight.beginFill(0xffffff, 0.3);
+    highlight.drawCircle(-BALL_RADIUS * 0.3, -BALL_RADIUS * 0.3, BALL_RADIUS * 0.4);
+    highlight.endFill();
+    ball.addChild(highlight);
+    
     resetBallPosition();
     app.stage.addChild(ball);
 }
 
-function createRealisticGoalkeeper() {
+function createGoalkeeperSprite() {
     goalkeeper = new PIXI.Container();
     
-    // Goalkeeper body
+    // Goalkeeper body - larger and more detailed
     const body = new PIXI.Graphics();
-    body.beginFill(0x228b22); // Green jersey
-    body.drawRoundedRect(-GOALKEEPER_WIDTH / 2, -GOALKEEPER_HEIGHT / 2, GOALKEEPER_WIDTH, GOALKEEPER_HEIGHT * 0.6, 5);
+    body.beginFill(0x00a000); // Bright green jersey
+    body.drawRoundedRect(-GOALKEEPER_WIDTH / 2, -GOALKEEPER_HEIGHT / 2, GOALKEEPER_WIDTH, GOALKEEPER_HEIGHT * 0.7, 8);
     body.endFill();
     
-    // Goalkeeper head
+    // Add jersey details
+    body.lineStyle(2, 0x006600);
+    body.drawRoundedRect(-GOALKEEPER_WIDTH / 2, -GOALKEEPER_HEIGHT / 2, GOALKEEPER_WIDTH, GOALKEEPER_HEIGHT * 0.7, 8);
+    
+    // Jersey number
+    const number = new PIXI.Text('1', {
+        fontFamily: 'Arial Black',
+        fontSize: 16,
+        fill: 0xffffff,
+        align: 'center'
+    });
+    number.x = -number.width / 2;
+    number.y = -10;
+    body.addChild(number);
+    
+    // Goalkeeper head with hair
     const head = new PIXI.Graphics();
     head.beginFill(0xfdbcb4); // Skin color
-    head.drawCircle(0, -GOALKEEPER_HEIGHT / 2 - 15, 15);
+    head.drawCircle(0, -GOALKEEPER_HEIGHT / 2 - 20, 18);
     head.endFill();
     
-    // Goalkeeper gloves
+    // Hair
+    const hair = new PIXI.Graphics();
+    hair.beginFill(0x8b4513);
+    hair.drawCircle(0, -GOALKEEPER_HEIGHT / 2 - 25, 20);
+    hair.endFill();
+    
+    // Eyes
+    const leftEye = new PIXI.Graphics();
+    leftEye.beginFill(0x000000);
+    leftEye.drawCircle(-6, -GOALKEEPER_HEIGHT / 2 - 20, 2);
+    leftEye.endFill();
+    
+    const rightEye = new PIXI.Graphics();
+    rightEye.beginFill(0x000000);
+    rightEye.drawCircle(6, -GOALKEEPER_HEIGHT / 2 - 20, 2);
+    rightEye.endFill();
+    
+    // Goalkeeper gloves - larger and more prominent
     const leftGlove = new PIXI.Graphics();
-    leftGlove.beginFill(0xffffff);
-    leftGlove.drawCircle(-GOALKEEPER_WIDTH / 2 - 10, -10, 8);
+    leftGlove.beginFill(0xffff00); // Yellow gloves
+    leftGlove.drawCircle(-GOALKEEPER_WIDTH / 2 - 15, -20, 12);
     leftGlove.endFill();
     
     const rightGlove = new PIXI.Graphics();
-    rightGlove.beginFill(0xffffff);
-    rightGlove.drawCircle(GOALKEEPER_WIDTH / 2 + 10, -10, 8);
+    rightGlove.beginFill(0xffff00);
+    rightGlove.drawCircle(GOALKEEPER_WIDTH / 2 + 15, -20, 12);
     rightGlove.endFill();
     
-    // Goalkeeper legs
+    // Arms
+    const leftArm = new PIXI.Graphics();
+    leftArm.beginFill(0x00a000);
+    leftArm.drawRect(-GOALKEEPER_WIDTH / 2 - 8, -40, 15, 30);
+    leftArm.endFill();
+    
+    const rightArm = new PIXI.Graphics();
+    rightArm.beginFill(0x00a000);
+    rightArm.drawRect(GOALKEEPER_WIDTH / 2 - 7, -40, 15, 30);
+    rightArm.endFill();
+    
+    // Goalkeeper shorts
+    const shorts = new PIXI.Graphics();
+    shorts.beginFill(0x000000);
+    shorts.drawRect(-GOALKEEPER_WIDTH / 2 + 5, GOALKEEPER_HEIGHT * 0.2, GOALKEEPER_WIDTH - 10, 25);
+    shorts.endFill();
+    
+    // Legs with socks
     const leftLeg = new PIXI.Graphics();
-    leftLeg.beginFill(0x000000);
-    leftLeg.drawRect(-GOALKEEPER_WIDTH / 4 - 5, GOALKEEPER_HEIGHT / 2 * 0.6, 10, 20);
+    leftLeg.beginFill(0xfdbcb4);
+    leftLeg.drawRect(-GOALKEEPER_WIDTH / 4 - 8, GOALKEEPER_HEIGHT * 0.45, 12, 25);
+    leftLeg.endFill();
+    leftLeg.beginFill(0x00a000); // Green socks
+    leftLeg.drawRect(-GOALKEEPER_WIDTH / 4 - 8, GOALKEEPER_HEIGHT * 0.65, 12, 15);
     leftLeg.endFill();
     
     const rightLeg = new PIXI.Graphics();
-    rightLeg.beginFill(0x000000);
-    rightLeg.drawRect(GOALKEEPER_WIDTH / 4 - 5, GOALKEEPER_HEIGHT / 2 * 0.6, 10, 20);
+    rightLeg.beginFill(0xfdbcb4);
+    rightLeg.drawRect(GOALKEEPER_WIDTH / 4 - 4, GOALKEEPER_HEIGHT * 0.45, 12, 25);
+    rightLeg.endFill();
+    rightLeg.beginFill(0x00a000);
+    rightLeg.drawRect(GOALKEEPER_WIDTH / 4 - 4, GOALKEEPER_HEIGHT * 0.65, 12, 15);
     rightLeg.endFill();
     
-    goalkeeper.addChild(body, head, leftGlove, rightGlove, leftLeg, rightLeg);
+    goalkeeper.addChild(hair, head, leftEye, rightEye, body, leftArm, rightArm, leftGlove, rightGlove, shorts, leftLeg, rightLeg);
     goalkeeper.x = GAME_WIDTH / 2;
-    goalkeeper.y = GAME_HEIGHT / 2 + 120;
+    goalkeeper.y = GOAL_AREA.top + GOAL_HEIGHT / 2;
     
     app.stage.addChild(goalkeeper);
 }
@@ -479,82 +572,11 @@ function createAtmosphereParticle() {
     app.stage.addChild(particle);
 }
 
-function onTargetClick(event) {
-    if (gameState !== 'ready') return;
-    
-    selectedTarget = event.target;
-    targetAimPos.x = selectedTarget.goalX;
-    targetAimPos.y = selectedTarget.goalY;
-    
-    // Highlight selected target
-    goalTargets.forEach(target => {
-        target.clear();
-        if (target === selectedTarget) {
-            target.beginFill(0x00ff00, 0.5);
-            target.lineStyle(3, 0x00ff00, 1);
-            target.drawCircle(0, 0, 25);
-            target.endFill();
-            target.beginFill(0xff0000, 0.8);
-            target.drawCircle(0, 0, 8);
-            target.endFill();
-        } else {
-            target.beginFill(0xffff00, 0.3);
-            target.lineStyle(3, 0xffff00, 0.8);
-            target.drawCircle(0, 0, 25);
-            target.endFill();
-            target.beginFill(0xff0000, 0.5);
-            target.drawCircle(0, 0, 8);
-            target.endFill();
-        }
-    });
-    
-    // Start aiming mode
-    gameState = 'aiming';
-    isCharging = true;
-    powerLevel = 0;
-    
-    // Show power meter safely
-    if (powerMeter) {
-        powerMeter.classList.remove('hidden');
-    }
-    
-    // Show aiming line
-    drawAimingLine();
-}
-
-function onTargetHover(event) {
-    if (gameState !== 'ready') return;
-    
-    const target = event.target;
-    target.clear();
-    target.beginFill(0x00ff00, 0.5);
-    target.lineStyle(3, 0x00ff00, 0.8);
-    target.drawCircle(0, 0, 28);
-    target.endFill();
-    target.beginFill(0xff0000, 0.7);
-    target.drawCircle(0, 0, 10);
-    target.endFill();
-}
-
-function onTargetOut(event) {
-    if (gameState !== 'ready') return;
-    
-    const target = event.target;
-    if (target !== selectedTarget) {
-        target.clear();
-        target.beginFill(0xffff00, 0.3);
-        target.lineStyle(3, 0xffff00, 0.8);
-        target.drawCircle(0, 0, 25);
-        target.endFill();
-        target.beginFill(0xff0000, 0.5);
-        target.drawCircle(0, 0, 8);
-        target.endFill();
-    }
-}
+// Target functions removed - now using click-anywhere system
 
 function resetBallPosition() {
     ball.x = GAME_WIDTH / 2;
-    ball.y = GAME_HEIGHT - 80;
+    ball.y = GAME_HEIGHT - 120; // Position for first-person view
     ball.vx = 0;
     ball.vy = 0;
     ball.gravity = 0;
@@ -576,17 +598,45 @@ function onMouseDown(event) {
     if (gameState !== 'aiming') return;
     
     const rect = app.view.getBoundingClientRect();
-    startMousePos.x = event.clientX - rect.left;
-    startMousePos.y = event.clientY - rect.top;
-    currentMousePos.x = startMousePos.x;
-    currentMousePos.y = startMousePos.y;
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
     
-    isAiming = true;
-    curveBall.visible = true;
-    curveAmount.x = 0;
-    curveAmount.y = 0;
-    
-    drawAimingLine();
+    // Check if click is in goal area
+    if (mouseX >= GOAL_AREA.left && mouseX <= GOAL_AREA.right && 
+        mouseY >= GOAL_AREA.top && mouseY <= GOAL_AREA.bottom) {
+        
+        // Set target position
+        targetAimPos.x = mouseX;
+        targetAimPos.y = mouseY;
+        
+        // Start aiming mode
+        isAiming = true;
+        isCharging = true;
+        powerLevel = 0;
+        startMousePos.x = mouseX;
+        startMousePos.y = mouseY;
+        currentMousePos.x = startMousePos.x;
+        currentMousePos.y = startMousePos.y;
+        
+        // Create/show curve ball
+        if (curveBall) {
+            curveBall.visible = true;
+            curveBall.x = ball.x;
+            curveBall.y = ball.y;
+        }
+        
+        curveAmount.x = 0;
+        curveAmount.y = 0;
+        
+        // Show power meter
+        const powerMeterContainer = document.getElementById('power-meter-container');
+        if (powerMeterContainer) {
+            powerMeterContainer.classList.remove('hidden');
+        }
+        
+        console.log('Started aiming at goal position:', targetAimPos);
+        drawAimingLine();
+    }
 }
 
 function onMouseMove(event) {
@@ -597,7 +647,7 @@ function onMouseMove(event) {
     currentMousePos.y = event.clientY - rect.top;
     
     // Calculate curve based on mouse position relative to ball
-    const maxRadius = 40;
+    const maxRadius = 50;
     const dx = currentMousePos.x - ball.x;
     const dy = currentMousePos.y - ball.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
@@ -606,13 +656,19 @@ function onMouseMove(event) {
         curveAmount.x = dx / maxRadius;
         curveAmount.y = dy / maxRadius;
     } else {
-        curveAmount.x = (dx / distance) * (maxRadius / maxRadius);
-        curveAmount.y = (dy / distance) * (maxRadius / maxRadius);
+        curveAmount.x = (dx / distance);
+        curveAmount.y = (dy / distance);
     }
     
-    // Update curve ball position
-    curveBall.x = ball.x + curveAmount.x * maxRadius;
-    curveBall.y = ball.y + curveAmount.y * maxRadius;
+    // Update curve ball position - constrain to circle
+    const constrainedDistance = Math.min(distance, maxRadius);
+    const constrainedX = (dx / distance) * constrainedDistance;
+    const constrainedY = (dy / distance) * constrainedDistance;
+    
+    if (curveBall) {
+        curveBall.x = ball.x + constrainedX;
+        curveBall.y = ball.y + constrainedY;
+    }
     
     drawAimingLine();
 }
@@ -624,31 +680,32 @@ function onMouseUp(event) {
     isAiming = false;
     
     // Hide power meter safely
-    if (powerMeter) {
-        powerMeter.classList.add('hidden');
+    const powerMeterContainer = document.getElementById('power-meter-container');
+    if (powerMeterContainer) {
+        powerMeterContainer.classList.add('hidden');
     }
     
     // Hide aiming elements
-    curveBall.visible = false;
-    aimingCircle.clear();
-    aimingLine.clear();
+    if (curveBall) {
+        curveBall.visible = false;
+    }
+    if (aimingCircle) {
+        aimingCircle.clear();
+    }
+    if (aimingLine) {
+        aimingLine.clear();
+    }
     
+    // Shoot if power is sufficient
     if (powerLevel > 10) {
+        console.log('Shooting with power:', powerLevel);
         shootBall();
     } else {
-        gameState = 'ready';
-        // Reset target selection
-        selectedTarget = null;
-        goalTargets.forEach(target => {
-            target.clear();
-            target.beginFill(0xffff00, 0.3);
-            target.lineStyle(3, 0xffff00, 0.8);
-            target.drawCircle(0, 0, 25);
-            target.endFill();
-            target.beginFill(0xff0000, 0.5);
-            target.drawCircle(0, 0, 8);
-            target.endFill();
-        });
+        console.log('Not enough power to shoot');
+        gameState = 'aiming';
+        // Reset for next attempt
+        targetAimPos.x = 0;
+        targetAimPos.y = 0;
     }
 }
 
@@ -732,18 +789,10 @@ function shootBall() {
     // Add shooting effects
     createShootEffect();
     
-    // Reset target selection
-    selectedTarget = null;
-    goalTargets.forEach(target => {
-        target.clear();
-        target.beginFill(0xffff00, 0.3);
-        target.lineStyle(3, 0xffff00, 0.8);
-        target.drawCircle(0, 0, 25);
-        target.endFill();
-        target.beginFill(0xff0000, 0.5);
-        target.drawCircle(0, 0, 8);
-        target.endFill();
-    });
+    // Reset for next shot
+    targetAimPos.x = 0;
+    targetAimPos.y = 0;
+    powerLevel = 0;
 }
 
 function moveGoalkeeper() {
@@ -799,6 +848,7 @@ function updatePowerMeter() {
         }
         
         // Update power fill safely
+        const powerFill = document.getElementById('power-fill');
         if (powerFill) {
             const percentage = (powerLevel / MAX_POWER) * 100;
             powerFill.style.width = percentage + '%';
@@ -892,13 +942,9 @@ function checkCollisions() {
         return;
     }
     
-    // Check goal collision (3D goal area)
-    const goalLeft = GAME_WIDTH / 2 - GOAL_WIDTH / 2;
-    const goalRight = GAME_WIDTH / 2 + GOAL_WIDTH / 2;
-    const goalTop = GAME_HEIGHT / 2 + 28;
-    const goalBottom = GAME_HEIGHT / 2 + 28 + GOAL_HEIGHT - 8;
-    
-    if (ball.x >= goalLeft && ball.x <= goalRight && ball.y >= goalTop && ball.y <= goalBottom) {
+    // Check goal collision using new goal area constants
+    if (ball.x >= GOAL_AREA.left && ball.x <= GOAL_AREA.right && 
+        ball.y >= GOAL_AREA.top && ball.y <= GOAL_AREA.bottom) {
         // Check if goalkeeper saves it
         const distanceToGoalkeeper = Math.sqrt(
             Math.pow(ball.x - goalkeeper.x, 2) + Math.pow(ball.y - goalkeeper.y, 2)
@@ -970,7 +1016,7 @@ function nextRound() {
     }
     
     // Reset for next round
-    gameState = 'ready';
+    gameState = 'aiming';
     resetBallPosition();
     powerLevel = 0;
     
@@ -990,7 +1036,7 @@ function endGame() {
     playerScore = 0;
     robotScore = 0;
     currentRound = 1;
-    gameState = 'ready';
+    gameState = 'aiming';
     resetBallPosition();
     updateUI();
 }
@@ -1020,269 +1066,7 @@ function updateUI() {
     }, 50);
 }
 
-function shootBall() {
-    gameState = 'shooting';
-    aimingLine.clear();
-    
-    // Calculate direction to target
-    const dx = targetAimPos.x - ball.x;
-    const dy = targetAimPos.y - ball.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    // Calculate ball velocity based on power and direction
-    const power = Math.min(powerLevel / MAX_POWER, 1);
-    const baseSpeed = 8 + power * 12;
-    
-    // For new perspective: shoot upward toward goal
-    ball.vx = (dx / distance) * baseSpeed * 0.5; // Horizontal component (left/right)
-    ball.vy = -(baseSpeed + power * 8); // Vertical component (always upward)
-    
-    // Apply curve based on curve ball position (Magnus effect)
-    ball.curveX = curveAmount.x * 0.4; // Horizontal curve
-    ball.curveY = curveAmount.y * 0.2; // Vertical curve
-    ball.gravity = 0.15;
-    
-    // Move goalkeeper
-    moveGoalkeeper();
-    
-    // Add shooting sound effect (visual feedback)
-    createShootEffect();
-}
-
-function moveGoalkeeper() {
-    // Simple AI: goalkeeper moves towards predicted ball position
-    const predictedX = ball.x + ball.vx * 20;
-    const targetX = Math.max(goalLeft + 30, Math.min(goalRight - 30, predictedX));
-    
-    // Random factor to make it not perfect
-    const randomOffset = (Math.random() - 0.5) * 60;
-    goalkeeper.targetX = targetX + randomOffset;
-    
-    // Animate goalkeeper movement
-    const moveSpeed = 3 + Math.random() * 2;
-    goalkeeper.moveSpeed = moveSpeed;
-}
-
-function createShootEffect() {
-    // Create particle burst at ball position
-    for (let i = 0; i < 10; i++) {
-        const particle = new PIXI.Graphics();
-        particle.beginFill(0x00ffff, 0.8);
-        particle.drawCircle(0, 0, 2);
-        particle.endFill();
-        
-        particle.x = ball.x;
-        particle.y = ball.y;
-        particle.vx = (Math.random() - 0.5) * 10;
-        particle.vy = (Math.random() - 0.5) * 10;
-        particle.life = 30;
-        particle.maxLife = 30;
-        
-        particles.push(particle);
-        app.stage.addChild(particle);
-    }
-}
-
-function gameLoop() {
-    updatePowerMeter();
-    updateBall();
-    updateGoalkeeper();
-    updateParticles();
-    checkCollisions();
-    updateUI();
-}
-
-function updatePowerMeter() {
-    if (isCharging) {
-        powerLevel += POWER_CHARGE_SPEED;
-        if (powerLevel >= MAX_POWER) {
-            powerLevel = MAX_POWER;
-        }
-        
-        const percentage = (powerLevel / MAX_POWER) * 100;
-        powerFill.style.width = percentage + '%';
-    }
-}
-
-function updateBall() {
-    if (gameState !== 'shooting') return;
-    
-    // Update ball position
-    ball.x += ball.vx;
-    ball.y += ball.vy;
-    
-    // Apply gravity
-    ball.vy += ball.gravity;
-    
-    // Apply curve
-    ball.vx += ball.curveX;
-    ball.vy += ball.curveY;
-    
-    // Air resistance
-    ball.vx *= 0.99;
-    ball.vy *= 0.995;
-    
-    // Add trail effect
-    ballTrail.push({ x: ball.x, y: ball.y, alpha: 1 });
-    if (ballTrail.length > 10) {
-        ballTrail.shift();
-    }
-    
-    // Draw trail
-    const trailGraphics = new PIXI.Graphics();
-    for (let i = 0; i < ballTrail.length; i++) {
-        const trail = ballTrail[i];
-        const alpha = (i / ballTrail.length) * 0.5;
-        trailGraphics.beginFill(0x00ffff, alpha);
-        trailGraphics.drawCircle(trail.x, trail.y, BALL_RADIUS * (i / ballTrail.length));
-        trailGraphics.endFill();
-    }
-    
-    if (app.stage.children.includes(trailGraphics)) {
-        app.stage.removeChild(trailGraphics);
-    }
-    app.stage.addChildAt(trailGraphics, 1);
-}
-
-function updateGoalkeeper() {
-    if (goalkeeper.targetX !== undefined) {
-        const dx = goalkeeper.targetX - goalkeeper.x;
-        if (Math.abs(dx) > 2) {
-            goalkeeper.x += Math.sign(dx) * goalkeeper.moveSpeed;
-        }
-    }
-}
-
-function updateParticles() {
-    particles.forEach((particle, index) => {
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-        
-        if (particle.life !== undefined) {
-            particle.life--;
-            particle.alpha = particle.life / particle.maxLife;
-            
-            if (particle.life <= 0) {
-                app.stage.removeChild(particle);
-                particles.splice(index, 1);
-            }
-        } else {
-            // Background particles
-            if (particle.x < 0 || particle.x > GAME_WIDTH) particle.vx *= -1;
-            if (particle.y < 0 || particle.y > GAME_HEIGHT) particle.vy *= -1;
-        }
-    });
-}
-
-function checkCollisions() {
-    if (gameState !== 'shooting') return;
-    
-    // Check if ball goes out of bounds
-    if (ball.x < -50 || ball.x > GAME_WIDTH + 50 || ball.y > GAME_HEIGHT + 50) {
-        miss();
-        return;
-    }
-    
-    // Check goal collision
-    if (ball.x >= goalLeft && ball.x <= goalRight && ball.y >= goalTop && ball.y <= goalBottom) {
-        // Check if goalkeeper saves it
-        const distanceToGoalkeeper = Math.sqrt(
-            Math.pow(ball.x - goalkeeper.x, 2) + Math.pow(ball.y - goalkeeper.y, 2)
-        );
-        
-        if (distanceToGoalkeeper < 40) {
-            save();
-        } else {
-            score();
-        }
-    }
-    
-    // Check if ball passes the goal line (missed)
-    if (ball.y < 0) {
-        miss();
-    }
-}
-
-function score() {
-    gameState = 'scored';
-    playerScore++;
-    createScoreEffect();
-    setTimeout(() => {
-        nextRound();
-    }, 2000);
-}
-
-function miss() {
-    gameState = 'missed';
-    setTimeout(() => {
-        nextRound();
-    }, 1000);
-}
-
-function save() {
-    gameState = 'saved';
-    setTimeout(() => {
-        nextRound();
-    }, 1500);
-}
-
-function createScoreEffect() {
-    // Create celebration particles
-    for (let i = 0; i < 30; i++) {
-        const particle = new PIXI.Graphics();
-        particle.beginFill(0x00ff00, 0.8);
-        particle.drawCircle(0, 0, 3);
-        particle.endFill();
-        
-        particle.x = ball.x;
-        particle.y = ball.y;
-        particle.vx = (Math.random() - 0.5) * 15;
-        particle.vy = (Math.random() - 0.5) * 15;
-        particle.life = 60;
-        particle.maxLife = 60;
-        
-        particles.push(particle);
-        app.stage.addChild(particle);
-    }
-}
-
-function nextRound() {
-    currentRound++;
-    
-    if (currentRound > maxRounds) {
-        endGame();
-        return;
-    }
-    
-    // Robot's turn (simple simulation)
-    if (Math.random() < 0.3) {
-        robotScore++;
-    }
-    
-    resetBallPosition();
-    gameState = 'ready';
-}
-
-function endGame() {
-    gameState = 'ended';
-    
-    const result = playerScore > robotScore ? 'YOU WIN!' : 
-                  playerScore < robotScore ? 'ROBOT WINS!' : 'DRAW!';
-    
-    // Reset for new game
-    setTimeout(() => {
-        playerScore = 0;
-        robotScore = 0;
-        currentRound = 1;
-        resetBallPosition();
-        gameState = 'ready';
-    }, 3000);
-}
-
-function updateUI() {
-    document.getElementById('player-score').textContent = playerScore;
-    document.getElementById('robot-score').textContent = robotScore;
-}
+// Duplicate functions removed
 
 // Initialize game when page loads
 window.addEventListener('load', init); 
