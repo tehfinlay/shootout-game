@@ -1,6 +1,11 @@
 // Initialize game when page loads
 window.addEventListener('load', init);
 
+// Backup initialization if load event already passed
+if (document.readyState === 'complete') {
+    init();
+}
+
 // Game constants
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 700;
@@ -46,34 +51,59 @@ let powerFill;
 
 // Initialize the game
 function init() {
-    // Create PixiJS application
-    app = new PIXI.Application({
-        width: GAME_WIDTH,
-        height: GAME_HEIGHT,
-        backgroundColor: 0x4a7c59, // Grass green
-        antialias: true
-    });
+    try {
+        console.log('Initializing game...');
+        
+        // Check if PIXI is available
+        if (typeof PIXI === 'undefined') {
+            console.error('PIXI is not loaded');
+            return;
+        }
+        
+        // Create PixiJS application
+        app = new PIXI.Application({
+            width: GAME_WIDTH,
+            height: GAME_HEIGHT,
+            backgroundColor: 0x4a7c59, // Grass green
+            antialias: true
+        });
 
-    // Add canvas to DOM
-    const canvas = document.getElementById('game-canvas');
-    canvas.replaceWith(app.view);
-    app.view.id = 'game-canvas';
+        // Add canvas to DOM
+        const canvas = document.getElementById('game-canvas');
+        if (canvas) {
+            canvas.replaceWith(app.view);
+            app.view.id = 'game-canvas';
+            console.log('Canvas replaced successfully');
+        } else {
+            console.error('Canvas element not found');
+            document.body.appendChild(app.view);
+        }
 
-    // Get UI elements
-    powerMeter = document.getElementById('power-meter-container');
-    powerFill = document.getElementById('power-fill');
+        // Get UI elements - with error checking
+        powerMeter = document.getElementById('power-meter-container');
+        powerFill = document.getElementById('power-fill');
+        
+        if (!powerMeter || !powerFill) {
+            console.log('Warning: UI elements not found');
+        }
 
-    // Create game scene
-    createScene();
-    
-    // Setup event listeners
-    setupEventListeners();
-    
-    // Start game loop
-    app.ticker.add(gameLoop);
-    
-    // Update initial UI
-    updateUI();
+        // Create game scene
+        createScene();
+        
+        // Setup event listeners
+        setupEventListeners();
+        
+        // Start game loop
+        app.ticker.add(gameLoop);
+        
+        // Update initial UI
+        updateUI();
+        
+        console.log('Game initialized successfully');
+        
+    } catch (error) {
+        console.error('Error initializing game:', error);
+    }
 }
 
 function createScene() {
@@ -403,7 +433,11 @@ function onTargetClick(event) {
     gameState = 'aiming';
     isCharging = true;
     powerLevel = 0;
-    powerMeter.classList.remove('hidden');
+    
+    // Show power meter safely
+    if (powerMeter) {
+        powerMeter.classList.remove('hidden');
+    }
     
     // Show aiming line
     drawAimingLine();
@@ -509,7 +543,11 @@ function onMouseUp(event) {
     
     isCharging = false;
     isAiming = false;
-    powerMeter.classList.add('hidden');
+    
+    // Hide power meter safely
+    if (powerMeter) {
+        powerMeter.classList.add('hidden');
+    }
     
     // Hide aiming elements
     curveBall.visible = false;
@@ -681,8 +719,11 @@ function updatePowerMeter() {
             powerLevel = MAX_POWER;
         }
         
-        const percentage = (powerLevel / MAX_POWER) * 100;
-        powerFill.style.width = percentage + '%';
+        // Update power fill safely
+        if (powerFill) {
+            const percentage = (powerLevel / MAX_POWER) * 100;
+            powerFill.style.width = percentage + '%';
+        }
         
         // Redraw aiming line to update power indicator
         drawAimingLine();
@@ -876,16 +917,21 @@ function endGame() {
 }
 
 function updateUI() {
-    // Update score display
-    const playerScoreElement = document.getElementById('player-score');
-    const roundDisplayElement = document.getElementById('round-display');
-    
-    if (playerScoreElement) {
-        playerScoreElement.textContent = playerScore;
-    }
-    
-    if (roundDisplayElement) {
-        roundDisplayElement.textContent = `${currentRound}/${maxRounds}`;
+    // Update score display - with error checking
+    try {
+        const playerScoreElement = document.getElementById('player-score');
+        const roundDisplayElement = document.getElementById('round-display');
+        
+        if (playerScoreElement) {
+            playerScoreElement.textContent = playerScore;
+        }
+        
+        if (roundDisplayElement) {
+            roundDisplayElement.textContent = `${currentRound}/${maxRounds}`;
+        }
+    } catch (error) {
+        console.log('UI update error:', error);
+        // Continue without UI updates if elements don't exist
     }
 }
 
