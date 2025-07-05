@@ -1,29 +1,22 @@
-console.log("PIXI is", typeof PIXI);
-if (typeof PIXI !== "undefined") {
-  const app = new PIXI.Application({ width: 400, height: 300, backgroundColor: 0x1099bb });
-  document.body.appendChild(app.view);
-  const graphics = new PIXI.Graphics();
-  graphics.beginFill(0xde3249);
-  graphics.drawRect(50, 50, 100, 100);
-  graphics.endFill();
-  app.stage.addChild(graphics);
-}
+// Initialize game when page loads
+window.addEventListener('load', init);
 
 // Game constants
 const GAME_WIDTH = 1200;
 const GAME_HEIGHT = 700;
-const GOAL_WIDTH = 300;
-const GOAL_HEIGHT = 100;
+const GOAL_WIDTH = 400;
+const GOAL_HEIGHT = 200;
+const GOAL_DEPTH = 100; // 3D depth
 const BALL_RADIUS = 12;
-const GOALKEEPER_WIDTH = 40;
-const GOALKEEPER_HEIGHT = 60;
+const GOALKEEPER_WIDTH = 50;
+const GOALKEEPER_HEIGHT = 80;
 const POWER_CHARGE_SPEED = 2;
 const MAX_POWER = 100;
 const CURVE_SENSITIVITY = 0.3;
 
 // Game state
 let app;
-let gameState = 'ready'; // 'ready', 'charging', 'shooting', 'scored', 'missed'
+let gameState = 'ready'; // 'ready', 'aiming', 'shooting', 'scored', 'missed'
 let playerScore = 0;
 let robotScore = 0;
 let currentRound = 1;
@@ -32,7 +25,8 @@ let maxRounds = 5;
 // Game objects
 let ball;
 let goalkeeper;
-let goalLeft, goalRight, goalTop, goalBottom;
+let goalTargets = []; // Clickable target positions in goal
+let selectedTarget = null;
 let powerLevel = 0;
 let isCharging = false;
 let startMousePos = { x: 0, y: 0 };
@@ -56,7 +50,7 @@ function init() {
     app = new PIXI.Application({
         width: GAME_WIDTH,
         height: GAME_HEIGHT,
-        backgroundColor: 0x001122,
+        backgroundColor: 0x4a7c59, // Grass green
         antialias: true
     });
 
@@ -77,68 +71,34 @@ function init() {
     
     // Start game loop
     app.ticker.add(gameLoop);
+    
+    // Update initial UI
+    updateUI();
 }
 
 function createScene() {
-    // Create field background with perspective
-    const field = new PIXI.Graphics();
-    field.beginFill(0x0a4a0a);
-    field.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    field.endFill();
+    // Create stadium background
+    createStadium();
     
-    // Add field lines with perspective
-    field.lineStyle(3, 0x00ffff, 0.8);
+    // Create 3D perspective goal
+    create3DGoal();
     
-    // Penalty area (trapezoid shape for perspective)
-    field.beginFill(0x0a4a0a, 0);
-    field.lineStyle(2, 0x00ffff, 0.6);
-    field.moveTo(GAME_WIDTH / 2 - 150, GAME_HEIGHT - 50);
-    field.lineTo(GAME_WIDTH / 2 + 150, GAME_HEIGHT - 50);
-    field.lineTo(GAME_WIDTH / 2 + 100, 200);
-    field.lineTo(GAME_WIDTH / 2 - 100, 200);
-    field.closePath();
-    field.endFill();
-    
-    // Goal area (smaller trapezoid)
-    field.beginFill(0x0a4a0a, 0);
-    field.lineStyle(2, 0x00ffff, 0.6);
-    field.moveTo(GAME_WIDTH / 2 - 100, 200);
-    field.lineTo(GAME_WIDTH / 2 + 100, 200);
-    field.lineTo(GAME_WIDTH / 2 + 60, 120);
-    field.lineTo(GAME_WIDTH / 2 - 60, 120);
-    field.closePath();
-    field.endFill();
-    
-    // Center line
-    field.lineStyle(3, 0x00ffff, 0.8);
-    field.moveTo(GAME_WIDTH / 2, GAME_HEIGHT - 50);
-    field.lineTo(GAME_WIDTH / 2, 50);
-    
-    // Penalty spot
-    field.beginFill(0x00ffff);
-    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT - 120, 4);
-    field.endFill();
-    
-    app.stage.addChild(field);
-
-    // Create goal posts
-    createGoalPosts();
+    // Create goal targets
+    createGoalTargets();
     
     // Create ball
     createBall();
     
-    // Create goalkeeper
-    createGoalkeeper();
+    // Create realistic goalkeeper
+    createRealisticGoalkeeper();
     
-    // Create aiming line
+    // Create aiming elements
     aimingLine = new PIXI.Graphics();
     app.stage.addChild(aimingLine);
     
-    // Create aiming circle for curve control
     aimingCircle = new PIXI.Graphics();
     app.stage.addChild(aimingCircle);
     
-    // Create curve ball (small ball inside aiming circle)
     curveBall = new PIXI.Graphics();
     curveBall.beginFill(0xffff00);
     curveBall.drawCircle(0, 0, 6);
@@ -146,132 +106,342 @@ function createScene() {
     curveBall.visible = false;
     app.stage.addChild(curveBall);
     
-    // Add futuristic effects
-    addFuturisticEffects();
+    // Add stadium atmosphere
+    addStadiumEffects();
 }
 
-function createGoalPosts() {
-    const goalContainer = new PIXI.Container();
+function createStadium() {
+    // Stadium background
+    const stadium = new PIXI.Graphics();
     
-    // Left goal post
-    const leftPost = new PIXI.Graphics();
-    leftPost.beginFill(0xffffff);
-    leftPost.drawRect(GAME_WIDTH / 2 - GOAL_WIDTH / 2, 50, 8, GOAL_HEIGHT);
-    leftPost.endFill();
+    // Sky gradient
+    stadium.beginFill(0x87ceeb);
+    stadium.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT / 3);
+    stadium.endFill();
     
-    // Right goal post
-    const rightPost = new PIXI.Graphics();
-    rightPost.beginFill(0xffffff);
-    rightPost.drawRect(GAME_WIDTH / 2 + GOAL_WIDTH / 2 - 8, 50, 8, GOAL_HEIGHT);
-    rightPost.endFill();
+    // Stadium stands (perspective)
+    stadium.beginFill(0x333333);
+    stadium.moveTo(0, GAME_HEIGHT / 3);
+    stadium.lineTo(GAME_WIDTH, GAME_HEIGHT / 3);
+    stadium.lineTo(GAME_WIDTH - 100, GAME_HEIGHT / 2);
+    stadium.lineTo(100, GAME_HEIGHT / 2);
+    stadium.closePath();
+    stadium.endFill();
+    
+    // Crowd silhouettes
+    for (let i = 0; i < 50; i++) {
+        const person = new PIXI.Graphics();
+        person.beginFill(0x222222);
+        person.drawRect(0, 0, 3, 8);
+        person.endFill();
+        person.x = 100 + (i * (GAME_WIDTH - 200) / 50);
+        person.y = GAME_HEIGHT / 3 + Math.random() * 20;
+        stadium.addChild(person);
+    }
+    
+    // Grass field with perspective
+    const field = new PIXI.Graphics();
+    field.beginFill(0x228b22);
+    field.drawRect(0, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT / 2);
+    field.endFill();
+    
+    // Field lines with perspective
+    field.lineStyle(2, 0xffffff, 0.8);
+    
+    // Goal area (3D perspective)
+    const goalAreaPoints = [
+        { x: GAME_WIDTH / 2 - 120, y: GAME_HEIGHT / 2 + 80 },
+        { x: GAME_WIDTH / 2 + 120, y: GAME_HEIGHT / 2 + 80 },
+        { x: GAME_WIDTH / 2 + 80, y: GAME_HEIGHT / 2 + 20 },
+        { x: GAME_WIDTH / 2 - 80, y: GAME_HEIGHT / 2 + 20 }
+    ];
+    
+    field.moveTo(goalAreaPoints[0].x, goalAreaPoints[0].y);
+    for (let i = 1; i < goalAreaPoints.length; i++) {
+        field.lineTo(goalAreaPoints[i].x, goalAreaPoints[i].y);
+    }
+    field.closePath();
+    
+    // Penalty spot
+    field.beginFill(0xffffff);
+    field.drawCircle(GAME_WIDTH / 2, GAME_HEIGHT - 80, 3);
+    field.endFill();
+    
+    app.stage.addChild(stadium);
+    app.stage.addChild(field);
+}
+
+function create3DGoal() {
+    const goal = new PIXI.Container();
+    
+    // Goal frame with 3D perspective
+    const frame = new PIXI.Graphics();
+    
+    // Left post
+    frame.beginFill(0xffffff);
+    frame.moveTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20);
+    frame.lineTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
+    frame.lineTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2 + 8, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
+    frame.lineTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2 + 8, GAME_HEIGHT / 2 + 20);
+    frame.closePath();
+    frame.endFill();
+    
+    // Right post
+    frame.beginFill(0xffffff);
+    frame.moveTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20);
+    frame.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
+    frame.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2 - 8, GAME_HEIGHT / 2 + 20 + GOAL_HEIGHT);
+    frame.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2 - 8, GAME_HEIGHT / 2 + 20);
+    frame.closePath();
+    frame.endFill();
     
     // Crossbar
-    const crossbar = new PIXI.Graphics();
-    crossbar.beginFill(0xffffff);
-    crossbar.drawRect(GAME_WIDTH / 2 - GOAL_WIDTH / 2, 50, GOAL_WIDTH, 8);
-    crossbar.endFill();
+    frame.beginFill(0xffffff);
+    frame.drawRect(GAME_WIDTH / 2 - GOAL_WIDTH / 2, GAME_HEIGHT / 2 + 20, GOAL_WIDTH, 8);
+    frame.endFill();
     
-    // Goal net pattern
+    // Goal net with 3D perspective
     const net = new PIXI.Graphics();
-    net.lineStyle(1, 0xffffff, 0.3);
-    for (let i = 0; i < 10; i++) {
-        const x = GAME_WIDTH / 2 - GOAL_WIDTH / 2 + (i * GOAL_WIDTH / 10);
-        net.moveTo(x, 58);
-        net.lineTo(x, 50 + GOAL_HEIGHT);
+    net.lineStyle(1, 0xffffff, 0.4);
+    
+    // Vertical net lines
+    for (let i = 0; i <= 20; i++) {
+        const x = GAME_WIDTH / 2 - GOAL_WIDTH / 2 + (i * GOAL_WIDTH / 20);
+        net.moveTo(x, GAME_HEIGHT / 2 + 28);
+        net.lineTo(x, GAME_HEIGHT / 2 + 28 + GOAL_HEIGHT - 8);
     }
-    for (let i = 0; i < 5; i++) {
-        const y = 58 + (i * GOAL_HEIGHT / 5);
+    
+    // Horizontal net lines
+    for (let i = 0; i <= 10; i++) {
+        const y = GAME_HEIGHT / 2 + 28 + (i * (GOAL_HEIGHT - 8) / 10);
         net.moveTo(GAME_WIDTH / 2 - GOAL_WIDTH / 2, y);
         net.lineTo(GAME_WIDTH / 2 + GOAL_WIDTH / 2, y);
     }
     
-    goalContainer.addChild(leftPost, rightPost, crossbar, net);
-    app.stage.addChild(goalContainer);
+    goal.addChild(frame);
+    goal.addChild(net);
+    app.stage.addChild(goal);
+}
+
+function createGoalTargets() {
+    const targetPositions = [
+        // Top row
+        { x: GAME_WIDTH / 2 - GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 60, id: 'top-left' },
+        { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 + 60, id: 'top-center' },
+        { x: GAME_WIDTH / 2 + GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 60, id: 'top-right' },
+        
+        // Bottom row
+        { x: GAME_WIDTH / 2 - GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 160, id: 'bottom-left' },
+        { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2 + 160, id: 'bottom-center' },
+        { x: GAME_WIDTH / 2 + GOAL_WIDTH / 3, y: GAME_HEIGHT / 2 + 160, id: 'bottom-right' }
+    ];
     
-    // Goal boundaries for collision detection
-    goalLeft = GAME_WIDTH / 2 - GOAL_WIDTH / 2;
-    goalRight = GAME_WIDTH / 2 + GOAL_WIDTH / 2;
-    goalTop = 50;
-    goalBottom = 50 + GOAL_HEIGHT;
+    targetPositions.forEach(pos => {
+        const target = new PIXI.Graphics();
+        target.beginFill(0xffff00, 0.3);
+        target.lineStyle(3, 0xffff00, 0.8);
+        target.drawCircle(0, 0, 25);
+        target.endFill();
+        
+        target.beginFill(0xff0000, 0.5);
+        target.drawCircle(0, 0, 8);
+        target.endFill();
+        
+        target.x = pos.x;
+        target.y = pos.y;
+        target.interactive = true;
+        target.buttonMode = true;
+        target.targetId = pos.id;
+        target.goalX = pos.x;
+        target.goalY = pos.y;
+        
+        target.on('pointerdown', onTargetClick);
+        target.on('pointerover', onTargetHover);
+        target.on('pointerout', onTargetOut);
+        
+        goalTargets.push(target);
+        app.stage.addChild(target);
+    });
 }
 
 function createBall() {
     ball = new PIXI.Graphics();
+    
+    // Main ball
     ball.beginFill(0xffffff);
     ball.drawCircle(0, 0, BALL_RADIUS);
     ball.endFill();
     
-    // Add soccer ball pattern
+    // Soccer ball pattern
     ball.lineStyle(2, 0x000000, 1);
     ball.drawCircle(0, 0, BALL_RADIUS);
-    ball.moveTo(-BALL_RADIUS * 0.7, 0);
-    ball.lineTo(BALL_RADIUS * 0.7, 0);
-    ball.moveTo(0, -BALL_RADIUS * 0.7);
-    ball.lineTo(0, BALL_RADIUS * 0.7);
+    
+    // Pentagon pattern
+    ball.beginFill(0x000000);
+    for (let i = 0; i < 5; i++) {
+        const angle = (i * Math.PI * 2) / 5;
+        const x = Math.cos(angle) * 4;
+        const y = Math.sin(angle) * 4;
+        if (i === 0) ball.moveTo(x, y);
+        else ball.lineTo(x, y);
+    }
+    ball.closePath();
+    ball.endFill();
     
     resetBallPosition();
     app.stage.addChild(ball);
 }
 
-function createGoalkeeper() {
+function createRealisticGoalkeeper() {
     goalkeeper = new PIXI.Container();
     
-    // Robot body
+    // Goalkeeper body
     const body = new PIXI.Graphics();
-    body.beginFill(0x333333);
-    body.drawRoundedRect(-GOALKEEPER_WIDTH / 2, -GOALKEEPER_HEIGHT / 2, GOALKEEPER_WIDTH, GOALKEEPER_HEIGHT, 5);
+    body.beginFill(0x228b22); // Green jersey
+    body.drawRoundedRect(-GOALKEEPER_WIDTH / 2, -GOALKEEPER_HEIGHT / 2, GOALKEEPER_WIDTH, GOALKEEPER_HEIGHT * 0.6, 5);
     body.endFill();
     
-    // Robot head
+    // Goalkeeper head
     const head = new PIXI.Graphics();
-    head.beginFill(0x555555);
-    head.drawCircle(0, -GOALKEEPER_HEIGHT / 2 - 10, 12);
+    head.beginFill(0xfdbcb4); // Skin color
+    head.drawCircle(0, -GOALKEEPER_HEIGHT / 2 - 15, 15);
     head.endFill();
     
-    // Robot eyes (glowing)
-    const leftEye = new PIXI.Graphics();
-    leftEye.beginFill(0xff0000);
-    leftEye.drawCircle(-6, -GOALKEEPER_HEIGHT / 2 - 10, 3);
-    leftEye.endFill();
+    // Goalkeeper gloves
+    const leftGlove = new PIXI.Graphics();
+    leftGlove.beginFill(0xffffff);
+    leftGlove.drawCircle(-GOALKEEPER_WIDTH / 2 - 10, -10, 8);
+    leftGlove.endFill();
     
-    const rightEye = new PIXI.Graphics();
-    rightEye.beginFill(0xff0000);
-    rightEye.drawCircle(6, -GOALKEEPER_HEIGHT / 2 - 10, 3);
-    rightEye.endFill();
+    const rightGlove = new PIXI.Graphics();
+    rightGlove.beginFill(0xffffff);
+    rightGlove.drawCircle(GOALKEEPER_WIDTH / 2 + 10, -10, 8);
+    rightGlove.endFill();
     
-    goalkeeper.addChild(body, head, leftEye, rightEye);
+    // Goalkeeper legs
+    const leftLeg = new PIXI.Graphics();
+    leftLeg.beginFill(0x000000);
+    leftLeg.drawRect(-GOALKEEPER_WIDTH / 4 - 5, GOALKEEPER_HEIGHT / 2 * 0.6, 10, 20);
+    leftLeg.endFill();
+    
+    const rightLeg = new PIXI.Graphics();
+    rightLeg.beginFill(0x000000);
+    rightLeg.drawRect(GOALKEEPER_WIDTH / 4 - 5, GOALKEEPER_HEIGHT / 2 * 0.6, 10, 20);
+    rightLeg.endFill();
+    
+    goalkeeper.addChild(body, head, leftGlove, rightGlove, leftLeg, rightLeg);
     goalkeeper.x = GAME_WIDTH / 2;
-    goalkeeper.y = 100;
+    goalkeeper.y = GAME_HEIGHT / 2 + 120;
     
     app.stage.addChild(goalkeeper);
 }
 
-function addFuturisticEffects() {
-    // Add background particles
-    for (let i = 0; i < 20; i++) {
-        createBackgroundParticle();
+function addStadiumEffects() {
+    // Stadium lights
+    for (let i = 0; i < 4; i++) {
+        const light = new PIXI.Graphics();
+        light.beginFill(0xffff99, 0.2);
+        light.drawCircle(0, 0, 30);
+        light.endFill();
+        light.x = (i + 1) * (GAME_WIDTH / 5);
+        light.y = GAME_HEIGHT / 4;
+        app.stage.addChild(light);
+    }
+    
+    // Floating particles for atmosphere
+    for (let i = 0; i < 10; i++) {
+        createAtmosphereParticle();
     }
 }
 
-function createBackgroundParticle() {
+function createAtmosphereParticle() {
     const particle = new PIXI.Graphics();
-    particle.beginFill(0x00ffff, 0.1);
-    particle.drawCircle(0, 0, Math.random() * 3 + 1);
+    particle.beginFill(0xffffff, 0.1);
+    particle.drawCircle(0, 0, Math.random() * 2 + 1);
     particle.endFill();
     
     particle.x = Math.random() * GAME_WIDTH;
     particle.y = Math.random() * GAME_HEIGHT;
-    particle.vx = (Math.random() - 0.5) * 0.5;
-    particle.vy = (Math.random() - 0.5) * 0.5;
-    particle.alpha = Math.random() * 0.5 + 0.1;
+    particle.vx = (Math.random() - 0.5) * 0.2;
+    particle.vy = (Math.random() - 0.5) * 0.2;
+    particle.alpha = Math.random() * 0.3 + 0.1;
     
     particles.push(particle);
     app.stage.addChild(particle);
 }
 
+function onTargetClick(event) {
+    if (gameState !== 'ready') return;
+    
+    selectedTarget = event.target;
+    targetAimPos.x = selectedTarget.goalX;
+    targetAimPos.y = selectedTarget.goalY;
+    
+    // Highlight selected target
+    goalTargets.forEach(target => {
+        target.clear();
+        if (target === selectedTarget) {
+            target.beginFill(0x00ff00, 0.5);
+            target.lineStyle(3, 0x00ff00, 1);
+            target.drawCircle(0, 0, 25);
+            target.endFill();
+            target.beginFill(0xff0000, 0.8);
+            target.drawCircle(0, 0, 8);
+            target.endFill();
+        } else {
+            target.beginFill(0xffff00, 0.3);
+            target.lineStyle(3, 0xffff00, 0.8);
+            target.drawCircle(0, 0, 25);
+            target.endFill();
+            target.beginFill(0xff0000, 0.5);
+            target.drawCircle(0, 0, 8);
+            target.endFill();
+        }
+    });
+    
+    // Start aiming mode
+    gameState = 'aiming';
+    isCharging = true;
+    powerLevel = 0;
+    powerMeter.classList.remove('hidden');
+    
+    // Show aiming line
+    drawAimingLine();
+}
+
+function onTargetHover(event) {
+    if (gameState !== 'ready') return;
+    
+    const target = event.target;
+    target.clear();
+    target.beginFill(0x00ff00, 0.5);
+    target.lineStyle(3, 0x00ff00, 0.8);
+    target.drawCircle(0, 0, 28);
+    target.endFill();
+    target.beginFill(0xff0000, 0.7);
+    target.drawCircle(0, 0, 10);
+    target.endFill();
+}
+
+function onTargetOut(event) {
+    if (gameState !== 'ready') return;
+    
+    const target = event.target;
+    if (target !== selectedTarget) {
+        target.clear();
+        target.beginFill(0xffff00, 0.3);
+        target.lineStyle(3, 0xffff00, 0.8);
+        target.drawCircle(0, 0, 25);
+        target.endFill();
+        target.beginFill(0xff0000, 0.5);
+        target.drawCircle(0, 0, 8);
+        target.endFill();
+    }
+}
+
 function resetBallPosition() {
     ball.x = GAME_WIDTH / 2;
-    ball.y = GAME_HEIGHT - 120;
+    ball.y = GAME_HEIGHT - 80;
     ball.vx = 0;
     ball.vy = 0;
     ball.gravity = 0;
@@ -290,7 +460,7 @@ function setupEventListeners() {
 }
 
 function onMouseDown(event) {
-    if (gameState !== 'ready') return;
+    if (gameState !== 'aiming') return;
     
     const rect = app.view.getBoundingClientRect();
     startMousePos.x = event.clientX - rect.left;
@@ -298,71 +468,44 @@ function onMouseDown(event) {
     currentMousePos.x = startMousePos.x;
     currentMousePos.y = startMousePos.y;
     
-    // Set initial target position
-    targetAimPos.x = startMousePos.x;
-    targetAimPos.y = startMousePos.y;
-    
-    isCharging = true;
-    isAiming = false;
-    gameState = 'charging';
-    powerLevel = 0;
-    powerMeter.classList.remove('hidden');
-    
-    // Reset curve
+    isAiming = true;
+    curveBall.visible = true;
     curveAmount.x = 0;
     curveAmount.y = 0;
+    
+    drawAimingLine();
 }
 
 function onMouseMove(event) {
-    if (!isCharging) return;
+    if (!isAiming || gameState !== 'aiming') return;
     
     const rect = app.view.getBoundingClientRect();
     currentMousePos.x = event.clientX - rect.left;
     currentMousePos.y = event.clientY - rect.top;
     
-    const distanceFromStart = Math.sqrt(
-        Math.pow(currentMousePos.x - startMousePos.x, 2) + 
-        Math.pow(currentMousePos.y - startMousePos.y, 2)
-    );
+    // Calculate curve based on mouse position relative to ball
+    const maxRadius = 40;
+    const dx = currentMousePos.x - ball.x;
+    const dy = currentMousePos.y - ball.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
     
-    if (!isAiming && distanceFromStart > 50) {
-        // Switch to aiming mode - lock the target position
-        isAiming = true;
-        targetAimPos.x = startMousePos.x;
-        targetAimPos.y = startMousePos.y;
-        curveBall.visible = true;
-    }
-    
-    if (isAiming) {
-        // Move curve ball within the aiming circle
-        const maxRadius = 40; // Maximum distance from center
-        const dx = currentMousePos.x - targetAimPos.x;
-        const dy = currentMousePos.y - targetAimPos.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        if (distance <= maxRadius) {
-            curveAmount.x = dx / maxRadius;
-            curveAmount.y = dy / maxRadius;
-        } else {
-            // Constrain to circle boundary
-            curveAmount.x = (dx / distance) * (maxRadius / maxRadius);
-            curveAmount.y = (dy / distance) * (maxRadius / maxRadius);
-        }
-        
-        // Update curve ball position
-        curveBall.x = targetAimPos.x + curveAmount.x * maxRadius;
-        curveBall.y = targetAimPos.y + curveAmount.y * maxRadius;
+    if (distance <= maxRadius) {
+        curveAmount.x = dx / maxRadius;
+        curveAmount.y = dy / maxRadius;
     } else {
-        // Update target position
-        targetAimPos.x = currentMousePos.x;
-        targetAimPos.y = currentMousePos.y;
+        curveAmount.x = (dx / distance) * (maxRadius / maxRadius);
+        curveAmount.y = (dy / distance) * (maxRadius / maxRadius);
     }
+    
+    // Update curve ball position
+    curveBall.x = ball.x + curveAmount.x * maxRadius;
+    curveBall.y = ball.y + curveAmount.y * maxRadius;
     
     drawAimingLine();
 }
 
 function onMouseUp(event) {
-    if (!isCharging) return;
+    if (!isAiming || gameState !== 'aiming') return;
     
     isCharging = false;
     isAiming = false;
@@ -377,6 +520,18 @@ function onMouseUp(event) {
         shootBall();
     } else {
         gameState = 'ready';
+        // Reset target selection
+        selectedTarget = null;
+        goalTargets.forEach(target => {
+            target.clear();
+            target.beginFill(0xffff00, 0.3);
+            target.lineStyle(3, 0xffff00, 0.8);
+            target.drawCircle(0, 0, 25);
+            target.endFill();
+            target.beginFill(0xff0000, 0.5);
+            target.drawCircle(0, 0, 8);
+            target.endFill();
+        });
     }
 }
 
@@ -400,13 +555,11 @@ function onTouchEnd(event) {
     onMouseUp(event);
 }
 
-
-
 function drawAimingLine() {
     aimingLine.clear();
     aimingCircle.clear();
     
-    if (!isCharging) return;
+    if (gameState !== 'aiming') return;
     
     // Draw line from ball to target
     aimingLine.lineStyle(3, 0x00ffff, 0.8);
@@ -418,18 +571,321 @@ function drawAimingLine() {
     aimingLine.lineStyle(2, 0xffff00, 0.6);
     aimingLine.drawCircle(ball.x, ball.y, powerRadius);
     
-    // Draw aiming circle at target position if in aiming mode
+    // Draw aiming circle at ball position if in aiming mode
     if (isAiming) {
         aimingCircle.lineStyle(3, 0xffffff, 0.8);
-        aimingCircle.drawCircle(targetAimPos.x, targetAimPos.y, 40);
+        aimingCircle.drawCircle(ball.x, ball.y, 40);
         
         // Draw curve indicator
         if (Math.abs(curveAmount.x) > 0.1 || Math.abs(curveAmount.y) > 0.1) {
             const curveStrength = Math.sqrt(curveAmount.x * curveAmount.x + curveAmount.y * curveAmount.y);
             const curveColor = curveStrength > 0.5 ? 0xff4444 : 0x44ff44;
             aimingCircle.lineStyle(2, curveColor, 0.8);
-            aimingCircle.drawCircle(targetAimPos.x, targetAimPos.y, 45);
+            aimingCircle.drawCircle(ball.x, ball.y, 45);
         }
+    }
+}
+
+function shootBall() {
+    gameState = 'shooting';
+    aimingLine.clear();
+    aimingCircle.clear();
+    
+    // Calculate direction to target
+    const dx = targetAimPos.x - ball.x;
+    const dy = targetAimPos.y - ball.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Calculate ball velocity based on power and direction
+    const power = Math.min(powerLevel / MAX_POWER, 1);
+    const baseSpeed = 12 + power * 8;
+    
+    // Calculate trajectory to target
+    ball.vx = (dx / distance) * baseSpeed;
+    ball.vy = (dy / distance) * baseSpeed;
+    
+    // Apply curve based on curve ball position
+    ball.curveX = curveAmount.x * 0.3;
+    ball.curveY = curveAmount.y * 0.2;
+    ball.gravity = 0.1;
+    
+    // Move goalkeeper
+    moveGoalkeeper();
+    
+    // Add shooting effects
+    createShootEffect();
+    
+    // Reset target selection
+    selectedTarget = null;
+    goalTargets.forEach(target => {
+        target.clear();
+        target.beginFill(0xffff00, 0.3);
+        target.lineStyle(3, 0xffff00, 0.8);
+        target.drawCircle(0, 0, 25);
+        target.endFill();
+        target.beginFill(0xff0000, 0.5);
+        target.drawCircle(0, 0, 8);
+        target.endFill();
+    });
+}
+
+function moveGoalkeeper() {
+    // AI: goalkeeper moves towards predicted ball position
+    const predictedX = ball.x + ball.vx * 10;
+    const goalCenterX = GAME_WIDTH / 2;
+    const maxMoveDistance = GOAL_WIDTH / 2 - 40;
+    
+    let targetX = goalCenterX + Math.max(-maxMoveDistance, Math.min(maxMoveDistance, predictedX - goalCenterX));
+    
+    // Add some randomness to make it not perfect
+    const randomOffset = (Math.random() - 0.5) * 30;
+    goalkeeper.targetX = targetX + randomOffset;
+    
+    // Set animation speed
+    goalkeeper.moveSpeed = 4 + Math.random() * 2;
+}
+
+function createShootEffect() {
+    // Create particle burst at ball position
+    for (let i = 0; i < 15; i++) {
+        const particle = new PIXI.Graphics();
+        particle.beginFill(0xffffff, 0.8);
+        particle.drawCircle(0, 0, 3);
+        particle.endFill();
+        
+        particle.x = ball.x;
+        particle.y = ball.y;
+        particle.vx = (Math.random() - 0.5) * 8;
+        particle.vy = (Math.random() - 0.5) * 8;
+        particle.life = 40;
+        particle.maxLife = 40;
+        
+        particles.push(particle);
+        app.stage.addChild(particle);
+    }
+}
+
+function gameLoop() {
+    updatePowerMeter();
+    updateBall();
+    updateGoalkeeper();
+    updateParticles();
+    checkCollisions();
+    updateUI();
+}
+
+function updatePowerMeter() {
+    if (isCharging && gameState === 'aiming') {
+        powerLevel += POWER_CHARGE_SPEED;
+        if (powerLevel >= MAX_POWER) {
+            powerLevel = MAX_POWER;
+        }
+        
+        const percentage = (powerLevel / MAX_POWER) * 100;
+        powerFill.style.width = percentage + '%';
+        
+        // Redraw aiming line to update power indicator
+        drawAimingLine();
+    }
+}
+
+function updateBall() {
+    if (gameState !== 'shooting') return;
+    
+    // Update ball position
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    
+    // Apply gravity
+    ball.vy += ball.gravity;
+    
+    // Apply curve
+    ball.vx += ball.curveX;
+    ball.vy += ball.curveY;
+    
+    // Air resistance
+    ball.vx *= 0.995;
+    ball.vy *= 0.995;
+    
+    // Add trail effect
+    ballTrail.push({ x: ball.x, y: ball.y, alpha: 1 });
+    if (ballTrail.length > 8) {
+        ballTrail.shift();
+    }
+    
+    // Draw trail
+    const trailGraphics = new PIXI.Graphics();
+    for (let i = 0; i < ballTrail.length; i++) {
+        const trail = ballTrail[i];
+        const alpha = (i / ballTrail.length) * 0.6;
+        trailGraphics.beginFill(0xffffff, alpha);
+        trailGraphics.drawCircle(trail.x, trail.y, BALL_RADIUS * (i / ballTrail.length));
+        trailGraphics.endFill();
+    }
+    
+    // Remove old trail
+    const oldTrail = app.stage.getChildByName('ballTrail');
+    if (oldTrail) {
+        app.stage.removeChild(oldTrail);
+    }
+    
+    trailGraphics.name = 'ballTrail';
+    app.stage.addChildAt(trailGraphics, 2);
+}
+
+function updateGoalkeeper() {
+    if (goalkeeper.targetX !== undefined) {
+        const dx = goalkeeper.targetX - goalkeeper.x;
+        if (Math.abs(dx) > 3) {
+            goalkeeper.x += Math.sign(dx) * goalkeeper.moveSpeed;
+        }
+    }
+}
+
+function updateParticles() {
+    particles.forEach((particle, index) => {
+        particle.x += particle.vx;
+        particle.y += particle.vy;
+        
+        if (particle.life !== undefined) {
+            particle.life--;
+            particle.alpha = particle.life / particle.maxLife;
+            
+            if (particle.life <= 0) {
+                app.stage.removeChild(particle);
+                particles.splice(index, 1);
+            }
+        } else {
+            // Atmosphere particles
+            if (particle.x < 0 || particle.x > GAME_WIDTH) particle.vx *= -1;
+            if (particle.y < 0 || particle.y > GAME_HEIGHT) particle.vy *= -1;
+        }
+    });
+}
+
+function checkCollisions() {
+    if (gameState !== 'shooting') return;
+    
+    // Check if ball goes out of bounds
+    if (ball.x < -50 || ball.x > GAME_WIDTH + 50 || ball.y > GAME_HEIGHT + 50) {
+        miss();
+        return;
+    }
+    
+    // Check goal collision (3D goal area)
+    const goalLeft = GAME_WIDTH / 2 - GOAL_WIDTH / 2;
+    const goalRight = GAME_WIDTH / 2 + GOAL_WIDTH / 2;
+    const goalTop = GAME_HEIGHT / 2 + 28;
+    const goalBottom = GAME_HEIGHT / 2 + 28 + GOAL_HEIGHT - 8;
+    
+    if (ball.x >= goalLeft && ball.x <= goalRight && ball.y >= goalTop && ball.y <= goalBottom) {
+        // Check if goalkeeper saves it
+        const distanceToGoalkeeper = Math.sqrt(
+            Math.pow(ball.x - goalkeeper.x, 2) + Math.pow(ball.y - goalkeeper.y, 2)
+        );
+        
+        if (distanceToGoalkeeper < 35) {
+            save();
+        } else {
+            score();
+        }
+        return;
+    }
+    
+    // Check if ball passes behind the goal (missed)
+    if (ball.y < GAME_HEIGHT / 2 + 20) {
+        miss();
+    }
+}
+
+function score() {
+    gameState = 'scored';
+    playerScore++;
+    createScoreEffect();
+    setTimeout(() => {
+        nextRound();
+    }, 2000);
+}
+
+function miss() {
+    gameState = 'missed';
+    setTimeout(() => {
+        nextRound();
+    }, 1000);
+}
+
+function save() {
+    gameState = 'saved';
+    setTimeout(() => {
+        nextRound();
+    }, 1500);
+}
+
+function createScoreEffect() {
+    // Create celebration particles
+    for (let i = 0; i < 30; i++) {
+        const particle = new PIXI.Graphics();
+        particle.beginFill(0xffd700, 0.8);
+        particle.drawCircle(0, 0, 4);
+        particle.endFill();
+        
+        particle.x = targetAimPos.x;
+        particle.y = targetAimPos.y;
+        particle.vx = (Math.random() - 0.5) * 15;
+        particle.vy = (Math.random() - 0.5) * 15;
+        particle.life = 60;
+        particle.maxLife = 60;
+        
+        particles.push(particle);
+        app.stage.addChild(particle);
+    }
+}
+
+function nextRound() {
+    currentRound++;
+    
+    if (currentRound > maxRounds) {
+        endGame();
+        return;
+    }
+    
+    // Reset for next round
+    gameState = 'ready';
+    resetBallPosition();
+    powerLevel = 0;
+    
+    // Reset goalkeeper position
+    goalkeeper.x = GAME_WIDTH / 2;
+    goalkeeper.targetX = undefined;
+    
+    updateUI();
+}
+
+function endGame() {
+    gameState = 'gameOver';
+    // Game over logic here
+    alert(`Game Over! Final Score: ${playerScore}/${maxRounds}`);
+    
+    // Reset game
+    playerScore = 0;
+    robotScore = 0;
+    currentRound = 1;
+    gameState = 'ready';
+    resetBallPosition();
+    updateUI();
+}
+
+function updateUI() {
+    // Update score display
+    const playerScoreElement = document.getElementById('player-score');
+    const roundDisplayElement = document.getElementById('round-display');
+    
+    if (playerScoreElement) {
+        playerScoreElement.textContent = playerScore;
+    }
+    
+    if (roundDisplayElement) {
+        roundDisplayElement.textContent = `${currentRound}/${maxRounds}`;
     }
 }
 
